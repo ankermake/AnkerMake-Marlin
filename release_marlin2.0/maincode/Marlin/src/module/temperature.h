@@ -41,6 +41,9 @@
   #define SOFT_PWM_SCALE 0
 #endif
 
+#define HOTEND_MINTEMP_ERR_CNT_MAX  20
+#define HOTEND_MAXTEMP_ERR_CNT_MAX  20
+
 #define HOTEND_INDEX TERN(HAS_MULTI_HOTEND, e, 0)
 #define E_NAME TERN_(HAS_MULTI_HOTEND, e)
 
@@ -352,6 +355,8 @@ class Temperature {
       static hotend_info_t temp_hotend[HOTENDS];
       static const celsius_t hotend_maxtemp[HOTENDS];
       static inline celsius_t hotend_max_target(const uint8_t e) { return hotend_maxtemp[e] - (HOTEND_OVERSHOOT); }
+      static uint32_t hotend_mintemp_err_cnt[HOTENDS];
+      static uint32_t hotend_maxtemp_err_cnt[HOTENDS];
     #endif
     #if HAS_HEATED_BED
       static bed_info_t temp_bed;

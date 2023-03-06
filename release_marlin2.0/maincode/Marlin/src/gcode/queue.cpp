@@ -583,7 +583,7 @@ void GCodeQueue:: multi_pack_process(char *buf, unsigned int chkpos, int p)
   crc = strtoul(&buf[chkpos + 1], NULL, 16);
   tmp_crc = crc16(0x0000, buf + 1, chkpos - 1);
   if (crc != tmp_crc) {
-    SERIAL_ECHO("error\r\n");
+    SERIAL_ECHO("Request retry\r\n");
     snprintf(tmp, sizeof(tmp),"Crc check failed,%04X != %04X,%s\r\n", crc, tmp_crc,buf);
     SERIAL_ECHO(tmp);
     return;
@@ -601,7 +601,7 @@ void GCodeQueue:: multi_pack_process(char *buf, unsigned int chkpos, int p)
         SERIAL_ECHOLN(STR_OK);
         last_crc = 0xFFFF;
     } else {
-      SERIAL_ECHO("error\r\n");
+      SERIAL_ECHO("waiting\r\n");
       SERIAL_ECHO("Insufficient queue space!\r\n");  
     }
     return;
@@ -666,8 +666,9 @@ bool GCodeQueue::multi_pack_recv(int c, int p)
   #define IS_UARTX 1
   if (p != IS_UARTX) //only responce uart1 from junzheng
     return false;
-  if (state > 0 && millis() - timeout > 1000) {  
+  if (state > 0 && millis() - timeout > 180) {  
     SERIAL_ECHO("Multi pack recv timeout\r\n");
+    SERIAL_ECHO("Request retry\r\n");
     state = 0;
   }
 
@@ -703,6 +704,7 @@ bool GCodeQueue::multi_pack_recv(int c, int p)
   }  
   packbuf[recvcnt++] = c;
   if (recvcnt > sizeof(packbuf) - 2) {
+    SERIAL_ECHO("Request retry\r\n");
     SERIAL_ECHO("Multi pack too long.\r\n");
     state = 0;
     recvcnt = 0;

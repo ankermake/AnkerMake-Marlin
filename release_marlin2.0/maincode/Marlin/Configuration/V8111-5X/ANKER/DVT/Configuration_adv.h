@@ -2170,8 +2170,8 @@
 // @section 7serial
 
 // The ASCII buffer for serial input
-#define MAX_CMD_SIZE 96//96//300
-#define BUFSIZE 256//128//64  256->384
+#define MAX_CMD_SIZE 64//96//300
+#define BUFSIZE 512//128//64  256->384
 
 // Transmission to Host Buffer Size
 // To save 386 bytes of PROGMEM (and TX_BUFFER_SIZE+3 bytes of RAM) set to 0.
@@ -2969,7 +2969,7 @@
     //#define SPI_ENDSTOPS              // TMC2130 only
     #define IMPROVE_HOMING_RELIABILITY
     #define X_STALL_CURRENT     450
-    #define Y_STALL_CURRENT     800
+    #define Y_STALL_CURRENT     900
     #define Z_STALL_CURRENT     1200
     #define Z2_STALL_CURRENT    1200
     #if ENABLED(USE_Z_SENSORLESS)

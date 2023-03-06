@@ -1177,7 +1177,7 @@ int strsplit(char *s, char separator, char *list[], int len)
     while (*s && count < len) {
         if (separator == *s) {
             *s = '\0';
-            list[count++] = s + 1; /*指向下一个子串*/
+            list[count++] = s + 1;
         }
         s++;
     }

@@ -966,7 +966,7 @@ void kill(PGM_P const lcd_error/*=nullptr*/, PGM_P const lcd_component/*=nullptr
   TERN_(HAS_TFT_LVGL_UI, lv_draw_error_message(lcd_error));
 
   TERN_(ANKER_MAKE_API,SERIAL_ECHOLN(lcd_error));
-  
+   
   #ifdef NOZZLE_BOARD_PWR_PIN
     OUT_WRITE(NOZZLE_BOARD_PWR_PIN, !NOZZLE_BOARD_PWR_STATE);
   #endif

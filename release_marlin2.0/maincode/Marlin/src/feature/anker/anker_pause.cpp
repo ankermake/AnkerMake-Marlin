@@ -1,8 +1,8 @@
 /*
  * @Author       : winter
  * @Date         : 2022-04-02 10:50:23
- * @LastEditors  : winter
- * @LastEditTime : 2022-05-20 14:03:20
+ * @LastEditors: winter.tian
+ * @LastEditTime: 2023-03-06 20:38:22
  * @Description  :
  */
 #include "anker_pause.h"
@@ -125,7 +125,7 @@ static void anker_pause_block_deal(void)
     p_info->cur_block_buf.block_info_tail = planner.block_buffer_tail;
     // memcpy(&(p_info->save_block_buf), &(p_info->cur_block_buf), sizeof(anker_block_buffer_t));
 
-    planner.clear_block_buffer(); // block清除
+    planner.clear_block_buffer();
 }
 
 static void anker_pause_deal(void)

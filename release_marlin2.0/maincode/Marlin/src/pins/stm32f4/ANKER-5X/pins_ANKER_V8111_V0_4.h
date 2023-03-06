@@ -61,8 +61,8 @@
   #define HOMING_RISE_SPEED                 40*60     //mm/min
   // Z Probe (when not Z_MIN_PIN)
   #ifndef Z_MIN_PROBE_PIN
-    #define Z_MIN_PROBE_PIN                 PB0
-  #endif
+       #define Z_MIN_PROBE_PIN                 PB0
+     #endif
 #else
   #define HOMING_RISE_SPEED                 40*60     //mm/min
   // Z Probe (when not Z_MIN_PIN)

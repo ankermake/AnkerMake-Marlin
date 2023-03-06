@@ -278,6 +278,8 @@ const char str_t_thermal_runaway[] PROGMEM = STR_T_THERMAL_RUNAWAY,
   hotend_info_t Temperature::temp_hotend[HOTENDS];
   #define _HMT(N) HEATER_##N##_MAXTEMP,
   const celsius_t Temperature::hotend_maxtemp[HOTENDS] = ARRAY_BY_HOTENDS(HEATER_0_MAXTEMP, HEATER_1_MAXTEMP, HEATER_2_MAXTEMP, HEATER_3_MAXTEMP, HEATER_4_MAXTEMP, HEATER_5_MAXTEMP, HEATER_6_MAXTEMP, HEATER_7_MAXTEMP);
+  uint32_t Temperature::hotend_mintemp_err_cnt[HOTENDS];
+  uint32_t Temperature::hotend_maxtemp_err_cnt[HOTENDS];
 #endif
 
 #if HAS_TEMP_REDUNDANT
@@ -1311,7 +1313,18 @@ void Temperature::manage_heater() {
 
     HOTEND_LOOP() {
       #if ENABLED(THERMAL_PROTECTION_HOTENDS)
-        if (degHotend(e) > temp_range[e].maxtemp) max_temp_error((heater_id_t)e);
+        if (degHotend(e) > temp_range[e].maxtemp)
+        {
+          hotend_maxtemp_err_cnt[e]++;
+          if(hotend_maxtemp_err_cnt[e] >= 2*HOTEND_MAXTEMP_ERR_CNT_MAX)
+          {
+            max_temp_error((heater_id_t)e);
+          }
+        }
+        else
+        {
+          hotend_maxtemp_err_cnt[e] = 0;
+        }
       #endif
 
       TERN_(HEATER_IDLE_HANDLER, heater_idle[e].update(ms));
@@ -2074,15 +2087,35 @@ void Temperature::updateTemperaturesFromRawValues() {
       const int8_t tdir = temp_dir[e];
       if (tdir) {
         const int16_t rawtemp = temp_hotend[e].raw * tdir; // normal direction, +rawtemp, else -rawtemp
-        if (rawtemp > temp_range[e].raw_max * tdir) max_temp_error((heater_id_t)e);
+        if (rawtemp > temp_range[e].raw_max * tdir) 
+        {
+          hotend_maxtemp_err_cnt[e]++;
+          if(hotend_maxtemp_err_cnt[e] >= 2*HOTEND_MAXTEMP_ERR_CNT_MAX)
+          {
+            max_temp_error((heater_id_t)e);
+          }
+        }
+        else
+        {
+          hotend_maxtemp_err_cnt[e] = 0;
+        }
 
         const bool heater_on = temp_hotend[e].target > 0;
         if (heater_on && rawtemp < temp_range[e].raw_min * tdir && !is_preheating(e)) {
           #if MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED > 1
             if (++consecutive_low_temperature_error[e] >= MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED)
           #endif
-              min_temp_error((heater_id_t)e);
+          hotend_mintemp_err_cnt[e]++;
+          if(hotend_mintemp_err_cnt[e] >= HOTEND_MINTEMP_ERR_CNT_MAX)
+          {
+            min_temp_error((heater_id_t)e);
+          }
         }
+        else
+        {
+          hotend_mintemp_err_cnt[e] = 0;
+        }
+
         #if MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED > 1
           else
             consecutive_low_temperature_error[e] = 0;
