@@ -285,19 +285,23 @@ const char str_t_thermal_runaway[] PROGMEM = STR_T_THERMAL_RUNAWAY,
   hotend_info_t Temperature::temp_hotend[HOTENDS];
   #define _HMT(N) HEATER_##N##_MAXTEMP,
   const celsius_t Temperature::hotend_maxtemp[HOTENDS] = ARRAY_BY_HOTENDS(HEATER_0_MAXTEMP, HEATER_1_MAXTEMP, HEATER_2_MAXTEMP, HEATER_3_MAXTEMP, HEATER_4_MAXTEMP, HEATER_5_MAXTEMP, HEATER_6_MAXTEMP, HEATER_7_MAXTEMP);
-  uint32_t Temperature::hotend_mintemp_err_cnt[HOTENDS];
-  uint32_t Temperature::hotend_maxtemp_err_cnt[HOTENDS];
+  uint8_t Temperature::hotend_minraw_err_cnt[HOTENDS] = {0};
+  uint8_t Temperature::hotend_maxraw_err_cnt[HOTENDS] = {0};
+  uint8_t Temperature::hotend_maxtemp_err_cnt[HOTENDS] = {0};
+  uint8_t Temperature::bed_minraw_err_cnt = 0;
+  uint8_t Temperature::bed_maxraw_err_cnt = 0;
+  uint8_t Temperature::bed_maxtemp_err_cnt = 0;
 #endif
 
 #if ENABLED(ANKER_TEMP_WATCH)
-  bool Temperature::temp_watch_mos2_stop_flag = false;
-  uint8_t Temperature::temp_watch_mos2_self_test_flag = 0;
-  uint8_t Temperature::temp_watch_mos2_deal_step = 0;
-  celsius_float_t temp_watch_mos2_diff_temp = 0.0;
   uint8_t Temperature::hotend_mos2_temp_watch_deal_step = 0;
   uint8_t Temperature::hotend_mos2_deal_enable_flag = 0;
   uint8_t Temperature::bed_mos2_temp_watch_deal_step = 0;
   uint8_t Temperature::bed_mos2_deal_enable_flag = 0;
+  uint8_t Temperature::hotend_temp_shock_process_step = 0;
+  uint8_t Temperature::bed_temp_shock_process_step = 0;
+  uint8_t Temperature::hotend_temp_slide_window_process_step = 0;
+  uint8_t Temperature::bed_temp_slide_window_process_step = 0;
 #endif
 
 #if HAS_TEMP_REDUNDANT
@@ -428,6 +432,9 @@ const char str_t_thermal_runaway[] PROGMEM = STR_T_THERMAL_RUNAWAY,
 
 #endif // HAS_FAN
 
+#if ENABLED(ANKER_TEMP_WATCH)
+  anker_hotend_watch_t Temperature::anker_watch_hotend[HOTENDS];
+#endif
 #if WATCH_HOTENDS
   hotend_watch_t Temperature::watch_hotend[HOTENDS]; // = { { 0 } }
 #endif
@@ -730,10 +737,6 @@ volatile bool Temperature::raw_temps_ready = false;
         #endif
         next_temp_ms = ms + 2000UL;
 
-        #if ENABLED(ANKER_TEMP_WATCH)
-        if(!temp_watch_is_mos2_self_test())
-        {
-        #endif
         // Make sure heating is actually working
         #if WATCH_PID
           if (BOTH(WATCH_BED, WATCH_HOTENDS) || isbed == DISABLED(WATCH_HOTENDS) || ischamber == DISABLED(WATCH_HOTENDS)) {
@@ -749,9 +752,6 @@ volatile bool Temperature::raw_temps_ready = false;
             else if (current_temp < target - (MAX_OVERSHOOT_PID_AUTOTUNE)) // Heated, then temperature fell too far?
               _temp_error(heater_id, str_t_thermal_runaway, GET_TEXT(MSG_THERMAL_RUNAWAY));
           }
-        #endif
-        #if ENABLED(ANKER_TEMP_WATCH)
-        }
         #endif
       } // every 2 seconds
 
@@ -988,18 +988,6 @@ bool Temperature::temp_watch_is_error(void)
 {
   return ((thermalManager.temp_watch_error_flag & 0xff00) == TEMP_WATCH_ERROR);
 }
-void Temperature::temp_watch_temp_error(void)
-{
-  _temp_error((heater_id_t)0, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
-}
-bool Temperature::temp_watch_is_mos2_self_test(void)
-{
-  return !!thermalManager.temp_watch_mos2_self_test_flag;
-}
-void Temperature::temp_watch_mos2_self_test_set(uint8_t state)
-{
-    thermalManager.temp_watch_mos2_self_test_flag = state;
-}
 void Temperature::_hotend_temp_watch(void)
 {
   static int err_count = 0;  
@@ -1033,14 +1021,13 @@ void Temperature::_hotend_temp_watch(void)
     start     = 0;
   }
 
-  if (err_count > 15 && (cur_temp >= base_temp + 30 && cur_temp < 270))
+  if (err_count > 15 && (cur_temp >= base_temp + 30 && cur_temp < HEATER_0_MAXTEMP))
   {
     thermalManager.temp_watch_error_flag |= TEMP_WATCH_ERROR;
-    // thermalManager.temp_watch_error_flag |= 0x0001;
-    // settings.save();
-    // _delay_ms(100);
-    // MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
     hotend_mos2_deal_enable_flag = 1;
+    err_count = 0;
+    base_temp = 0;
+    start     = 0;
   }
 }
 void Temperature::_hotend_mos2_temp_watch(void)
@@ -1048,7 +1035,6 @@ void Temperature::_hotend_mos2_temp_watch(void)
   static int time_count = 0;
   static celsius_float_t base_temp = 0.0;
   celsius_float_t cur_temp =0;
-  static uint8_t save_flag = 0;
 
   switch(hotend_mos2_temp_watch_deal_step)
   {
@@ -1060,7 +1046,6 @@ void Temperature::_hotend_mos2_temp_watch(void)
         base_temp = degHotend(0);
         cur_temp = base_temp;
         time_count = 0;
-        save_flag = 0;
         hotend_mos2_temp_watch_deal_step++;
         MYSERIAL2.printf("hotend: base_temp=%f, cur_temp=%f\r\n", base_temp, cur_temp);
       }
@@ -1069,27 +1054,40 @@ void Temperature::_hotend_mos2_temp_watch(void)
     case 1:
     {
       cur_temp = degHotend(0);
-      MYSERIAL2.printf("hotend: time_count=%d, cur_temp=%f\r\n", time_count, cur_temp);
       time_count++;
+      MYSERIAL2.printf("hotend: time_count=%d, cur_temp=%f\r\n", time_count, cur_temp);
       if(time_count >= 20)
       {
-        time_count = 15;
         if((cur_temp > base_temp + 30) && cur_temp <= HEATER_0_MAXTEMP)
         {
           thermalManager.temp_watch_error_flag |= 0x0002;
-          MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
         }
         else
         {
           thermalManager.temp_watch_error_flag |= 0x0001;
-          MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
         }
-        if(save_flag == 0)
+        if(thermalManager.temp_watch_error_flag & 0x0002)
         {
-          save_flag = 1;
           settings.save();
           _delay_ms(100);
         }
+        hotend_mos2_temp_watch_deal_step++;
+      }
+      break;
+    }
+    case 2:
+    {
+      cur_temp = degHotend(0);
+      time_count++;
+      MYSERIAL2.printf("hotend: cnt=%d, cur=%f, base=%f\r\n", time_count, cur_temp, base_temp);
+      if(time_count >= 5)
+      {
+        time_count = 0;
+        MYSERIAL2.printf("temp_watch_error_flag: %#x\r\n", thermalManager.temp_watch_error_flag);
+        if(thermalManager.temp_watch_error_flag & 0x0002)
+          MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
+        else if(thermalManager.temp_watch_error_flag & 0x0001)
+          MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
       }
       break;
     }
@@ -1108,6 +1106,7 @@ void Temperature::_bed_temp_watch(void)
   celsius_float_t cur_temp =0, target_temp = 0;
   cur_temp = degBed();
   target_temp = degTargetBed();
+
   if ((cur_temp > 50 && cur_temp > target_temp + 20) && (target_temp < 30))
   {
       if (cur_temp >= base_temp + 3)
@@ -1135,11 +1134,10 @@ void Temperature::_bed_temp_watch(void)
   if (err_count > 15  && (cur_temp >= base_temp + 10 && cur_temp < BED_MAXTEMP)) 
   {
     thermalManager.temp_watch_error_flag |= TEMP_WATCH_ERROR;
-    // thermalManager.temp_watch_error_flag |= 0x0010;
-    // settings.save();
-    // _delay_ms(100);
-    // MYSERIAL2.printf("Error:Demage:1 bed\r\n");
     bed_mos2_deal_enable_flag = 1;
+    err_count = 0;
+    base_temp = 0;
+    start     = 0;
   }
 }
 void Temperature::_bed_mos2_temp_watch(void)
@@ -1147,7 +1145,6 @@ void Temperature::_bed_mos2_temp_watch(void)
   static int time_count = 0;
   static celsius_float_t base_temp = 0.0;
   celsius_float_t cur_temp =0;
-  static uint8_t save_flag = 0;
 
   switch(bed_mos2_temp_watch_deal_step)
   {
@@ -1159,7 +1156,6 @@ void Temperature::_bed_mos2_temp_watch(void)
         base_temp = degBed();
         cur_temp = base_temp;
         time_count = 0;
-        save_flag = 0;
         bed_mos2_temp_watch_deal_step++;
         MYSERIAL2.printf("bed: base_temp=%f, cur_temp=%f\r\n", base_temp, cur_temp);
       }
@@ -1168,27 +1164,40 @@ void Temperature::_bed_mos2_temp_watch(void)
     case 1:
     {
       cur_temp = degBed();
-      MYSERIAL2.printf("bed: time_count=%d, cur_temp=%f\r\n", time_count, cur_temp);
       time_count++;
+      MYSERIAL2.printf("bed: time_count=%d, cur_temp=%f\r\n", time_count, cur_temp);
       if(time_count >= 30)
       {
-        time_count = 25;
         if((cur_temp > base_temp + 3) && cur_temp <= BED_MAXTEMP)
         {
           thermalManager.temp_watch_error_flag |= 0x0020;
-          MYSERIAL2.printf("Error:Demage:2 bed\r\n");
         }
         else
         {
           thermalManager.temp_watch_error_flag |= 0x0010;
-          MYSERIAL2.printf("Error:Demage:1 bed\r\n");
         }
-        if(save_flag == 0)
+        if(thermalManager.temp_watch_error_flag & 0x0020)
         {
-          save_flag = 1;
           settings.save();
           _delay_ms(100);
         }
+        bed_mos2_temp_watch_deal_step++;
+      }
+      break;
+    }
+    case 2:
+    {
+      cur_temp = degBed();
+      time_count++;
+      MYSERIAL2.printf("bed: cnt=%d, cur=%f, base=%f\r\n", time_count, cur_temp, base_temp);
+      if(time_count >= 5)
+      {
+        time_count = 0;
+        MYSERIAL2.printf("temp_watch_error_flag: %#x\r\n", thermalManager.temp_watch_error_flag);
+        if(thermalManager.temp_watch_error_flag & 0x0020)
+          MYSERIAL2.printf("Error:Demage:2 bed\r\n");
+        else if(thermalManager.temp_watch_error_flag & 0x0010)
+          MYSERIAL2.printf("Error:Demage:1 bed\r\n");
       }
       break;
     }
@@ -1224,7 +1233,7 @@ void Temperature::_temp_watch(void)
         if(report_count < 10)
         {
           report_count++;
-          
+          MYSERIAL2.printf("temp_watch_error_flag: %#x\r\n", thermalManager.temp_watch_error_flag);
           if(thermalManager.temp_watch_error_flag & 0x0002)
             MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
           else if(thermalManager.temp_watch_error_flag & 0x0001)
@@ -1237,13 +1246,6 @@ void Temperature::_temp_watch(void)
         else
         {
            MYSERIAL2.printf("heater off and nozzle power off!\r\n");
-           if(temp_watch_is_mos2_self_test())
-           {
-            MYSERIAL2.printf("Mos2:Start\r\n");
-            MYSERIAL2.printf("Mos2:End\r\n");
-            temp_watch_mos2_self_test_set(0);
-            report_count = 0;
-           }
         }
       }
       _hotend_mos2_temp_watch();
@@ -1258,11 +1260,8 @@ void Temperature::_temp_watch(void)
           heater_bed_ctrl2_enable = 1;
         }
       #endif
-      if(!temp_watch_is_mos2_self_test())
-      {
        _hotend_temp_watch();
        _bed_temp_watch();
-      }
       report_time_count = 0;
       report_count = 0;
       hotend_mos2_temp_watch_deal_step = 0;
@@ -1270,84 +1269,492 @@ void Temperature::_temp_watch(void)
     }
   }
 }
-void Temperature::_temp_watch_mos2_deal(void)
+#define CUR_AND_LAST_CELSIUS_DIFF_VALUE 5
+#define CUR_CELSIUS_ERROR_CNT_MAX 20
+void Temperature::hotend_temp_heating_process(void)
 {
-  static millis_t timeout = millis();
-  static celsius_float_t base_temp = 0.0;
-  celsius_float_t cur_temp = 0.0;
-  
-  if(temp_watch_is_mos2_self_test())
+  static celsius_float_t last_celsius = CUR_AND_LAST_CELSIUS_DIFF_VALUE;
+  static uint8_t cur_celsius_error_cnt = 0;
+
+  if((temp_hotend[0].target > 0) && (temp_hotend[0].celsius < temp_hotend[0].target - TEMP_HYSTERESIS -1))
   {
-    switch(temp_watch_mos2_deal_step)
+    if(temp_hotend[0].celsius < last_celsius - CUR_AND_LAST_CELSIUS_DIFF_VALUE)
+    {
+      cur_celsius_error_cnt++;
+      MYSERIAL2.printf("hotend: cur_celsius error: cnt %d, cur %f, last %f\r\n", cur_celsius_error_cnt, temp_hotend[0].celsius, last_celsius);
+      temp_hotend[0].celsius = last_celsius;
+      if(cur_celsius_error_cnt >= CUR_CELSIUS_ERROR_CNT_MAX)
+      {
+        _temp_error((heater_id_t)0, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
+      }
+    }
+    else
+    {
+      cur_celsius_error_cnt = 0;
+      last_celsius = temp_hotend[0].celsius;
+    }
+  }
+  else
+  {
+    cur_celsius_error_cnt = 0;
+    last_celsius = CUR_AND_LAST_CELSIUS_DIFF_VALUE;
+  }
+}
+void Temperature::bed_temp_heating_process(void)
+{
+  static celsius_float_t last_celsius = CUR_AND_LAST_CELSIUS_DIFF_VALUE;
+  static uint8_t cur_celsius_error_cnt = 0;
+
+  if((temp_bed.target > 0) && (temp_bed.celsius < temp_bed.target - TEMP_BED_HYSTERESIS -1))
+  {
+    if(temp_bed.celsius < last_celsius - CUR_AND_LAST_CELSIUS_DIFF_VALUE)
+    {
+      cur_celsius_error_cnt++;
+      MYSERIAL2.printf("bed: cur_celsius error: cnt %d, cur %f, last %f\r\n", cur_celsius_error_cnt, temp_bed.celsius, last_celsius);
+      temp_bed.celsius = last_celsius;
+      if(cur_celsius_error_cnt >= CUR_CELSIUS_ERROR_CNT_MAX)
+      {
+        _temp_error(H_BED, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
+      }
+    }
+    else
+    {
+      cur_celsius_error_cnt = 0;
+      last_celsius = temp_bed.celsius;
+    }
+  }
+  else
+  {
+    cur_celsius_error_cnt = 0;
+    last_celsius = CUR_AND_LAST_CELSIUS_DIFF_VALUE;
+  }
+}
+#define HOTEND_CELSIUS_SLIDE_WINDOW_BUF_SIZE WATCH_TEMP_PERIOD
+#define BED_CELSIUS_SLIDE_WINDOW_BUF_SIZE WATCH_BED_TEMP_PERIOD
+void Temperature::hotend_temp_slide_window_process(void)
+{
+  static millis_t timer = millis();
+  static uint8_t abnormal_temp_rise_cnt = 0;
+  static uint8_t read_index=0, write_index=0, tmp_index=0, len=0;
+  static celsius_float_t celsius_buf[HOTEND_CELSIUS_SLIDE_WINDOW_BUF_SIZE];
+
+  if((temp_hotend[0].target > 0) && (temp_hotend[0].celsius < temp_hotend[0].target - TEMP_HYSTERESIS -1))
+  {
+    switch(hotend_temp_slide_window_process_step)
     {
       case 0:
       {
-        MYSERIAL2.printf("Mos2:Start\r\n");
-        if(!temp_watch_is_error() && !thermalManager.temp_watch_mos2_stop_flag)
-        {
-          MYSERIAL2.printf("Mos2:Start\r\n");
-          setTargetHotend(0, 0);
-          base_temp = degHotend(0);
-          get_anker_nozzle_board_info()->power_off();
-          thermalManager.setTargetHotend(HEATER_0_MAXTEMP, 0);
-          if(thermalManager.temp_watch_mos2_diff_temp < 1)
-          {
-            thermalManager.temp_watch_mos2_diff_temp = 10.0;
-          }
-          timeout = millis();
-          temp_watch_mos2_deal_step++;
-          MYSERIAL2.printf("base_temp: %f\r\n", base_temp);
-          MYSERIAL2.printf("diff_temp: %f\r\n", thermalManager.temp_watch_mos2_diff_temp);
-        }
-        else
-        {
-          MYSERIAL2.printf("Mos2:End\r\n");
-          temp_watch_mos2_self_test_set(0);
-        }
+        len = 0;
+        read_index = 0;
+        write_index = 0;
+        abnormal_temp_rise_cnt = 0;
+        timer = millis() + SEC_TO_MS(1);
+        hotend_temp_slide_window_process_step++;
         break;
       }
       case 1:
       {
-        cur_temp = degHotend(0);
-        get_anker_nozzle_board_info()->power_off();
-        if((cur_temp > base_temp) && (cur_temp - base_temp) > thermalManager.temp_watch_mos2_diff_temp)
+        if(ELAPSED(millis(), timer))
         {
-          thermalManager.temp_watch_error_flag = TEMP_WATCH_ERROR;
-          settings.save();
-          _delay_ms(100);
-          MYSERIAL2.printf("temp watch mos2 error!\r\n");
-          MYSERIAL2.printf("cur_temp: %f -- %f\r\n", cur_temp, cur_temp - base_temp);
-          temp_watch_mos2_deal_step++;
-        }
-        else
-        {
-          if((millis() - timeout) > 15000)
+          if(len < HOTEND_CELSIUS_SLIDE_WINDOW_BUF_SIZE)
           {
-            temp_watch_mos2_deal_step++;
+            celsius_buf[write_index] = temp_hotend[0].celsius;
+            write_index = (write_index + 1) % HOTEND_CELSIUS_SLIDE_WINDOW_BUF_SIZE;
+            len++;
+            timer = millis() + SEC_TO_MS(1);
+          }
+          else
+          {
+            hotend_temp_slide_window_process_step++;
           }
         }
         break;
       }
       case 2:
       {
-        MYSERIAL2.printf("Mos2:End\r\n");
-        thermalManager.setTargetHotend(0, 0);
-        temp_watch_mos2_self_test_set(0);
-        temp_watch_mos2_deal_step = 0;
+        tmp_index = (read_index + HOTEND_CELSIUS_SLIDE_WINDOW_BUF_SIZE - 1) % HOTEND_CELSIUS_SLIDE_WINDOW_BUF_SIZE;
+        if(celsius_buf[tmp_index] - celsius_buf[read_index] >= WATCH_TEMP_INCREASE)
+        {
+          abnormal_temp_rise_cnt = 0;
+        }
+        else
+        {
+          abnormal_temp_rise_cnt++;
+          MYSERIAL2.printf("hotend: slide_window error: cnt %d, pre %.2f, cur %.2f\r\n", abnormal_temp_rise_cnt, celsius_buf[read_index], celsius_buf[tmp_index]);
+          if(abnormal_temp_rise_cnt >= WATCH_TEMP_PERIOD/4)
+          {
+            _temp_error((heater_id_t)0, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
+          }
+        }
+        read_index = (read_index + 1) % HOTEND_CELSIUS_SLIDE_WINDOW_BUF_SIZE;
+        if(len > 0) len--;
+        timer = millis() + SEC_TO_MS(1);
+        hotend_temp_slide_window_process_step = 1;
         break;
       }
 
       default:
       {
-        temp_watch_mos2_deal_step = 0;
+        hotend_temp_slide_window_process_step = 0;
         break;
       }
     }
   }
   else
   {
-    temp_watch_mos2_deal_step = 0;
+    hotend_temp_slide_window_process_step = 0;
   }
+}
+void Temperature::bed_temp_slide_window_process(void)
+{
+  static millis_t timer = millis();
+  static uint8_t abnormal_temp_rise_cnt = 0;
+  static uint8_t read_index=0, write_index=0, tmp_index=0, len=0;
+  static celsius_float_t celsius_buf[BED_CELSIUS_SLIDE_WINDOW_BUF_SIZE];
+
+  if((temp_bed.target > 0) && (temp_bed.celsius < temp_bed.target - TEMP_BED_HYSTERESIS -1))
+  {
+    switch(bed_temp_slide_window_process_step)
+    {
+      case 0:
+      {
+        len = 0;
+        read_index = 0;
+        write_index = 0;
+        abnormal_temp_rise_cnt = 0;
+        timer = millis() + SEC_TO_MS(1);
+        bed_temp_slide_window_process_step++;
+        break;
+      }
+      case 1:
+      {
+        if(ELAPSED(millis(), timer))
+        {
+          if(len < BED_CELSIUS_SLIDE_WINDOW_BUF_SIZE)
+          {
+            celsius_buf[write_index] = temp_bed.celsius;
+            write_index = (write_index + 1) % BED_CELSIUS_SLIDE_WINDOW_BUF_SIZE;
+            len++;
+            timer = millis() + SEC_TO_MS(1);
+          }
+          else
+          {
+            bed_temp_slide_window_process_step++;
+          }
+        }
+        break;
+      }
+      case 2:
+      {
+        tmp_index = (read_index+BED_CELSIUS_SLIDE_WINDOW_BUF_SIZE-1)%BED_CELSIUS_SLIDE_WINDOW_BUF_SIZE;
+        if(celsius_buf[tmp_index] - celsius_buf[read_index] >= WATCH_BED_TEMP_INCREASE)
+        {
+          abnormal_temp_rise_cnt = 0;
+        }
+        else
+        {
+          abnormal_temp_rise_cnt++;
+          MYSERIAL2.printf("bed: slide_window error: cnt %d, pre %.2f, cur %.2f\r\n", abnormal_temp_rise_cnt, celsius_buf[read_index], celsius_buf[tmp_index]);
+          if(abnormal_temp_rise_cnt >= WATCH_BED_TEMP_PERIOD/4)
+          {
+            _temp_error(H_BED, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
+          }
+        }
+        read_index = (read_index + 1) % BED_CELSIUS_SLIDE_WINDOW_BUF_SIZE;
+        if(len > 0) len--;
+        timer = millis() + SEC_TO_MS(1);
+        bed_temp_slide_window_process_step = 1;
+        break;
+      }
+
+      default:
+      {
+        bed_temp_slide_window_process_step = 0;
+        break;
+      }
+    }
+  }
+  else
+  {
+    bed_temp_slide_window_process_step = 0;
+  }
+}
+#define HOTEND_SEGMENTATION_INIT_TEMP 100
+#define HOTEND_SEGMENTATION_INTERVAL_TEMP 5
+#define HOTEND_SEGMENTATION_INTERVAL_TIME 6
+#define HOTEND_SEGMENTATION_CUR_CELSIUS_STABLE_CNT_MAX 10
+#define HOTEND_SEGMENTATION_HEATING_ERROR_CNT_MAX 2
+#define HOTEND_SEGMENTATION_TOTAL_TIME_MAX 80
+void Temperature::hotend_segmentation_heating_process(void)
+{
+  static uint8_t process_step = 0;
+  static uint16_t seg_time_cnt = 0;
+  static uint16_t total_time_cnt = 0;
+  static millis_t timer = millis();
+  static celsius_float_t last_celsius = 0.0;
+  static uint8_t cur_celsius_stable_cnt = 0;
+  static uint8_t seg_heating_err_cnt = 0;
+
+  if( (temp_hotend[0].target >= HOTEND_SEGMENTATION_INIT_TEMP) &&
+      (temp_hotend[0].celsius >= HOTEND_SEGMENTATION_INIT_TEMP) &&
+      (temp_hotend[0].celsius < temp_hotend[0].target - TEMP_HYSTERESIS))
+  {
+    switch (process_step)
+    {
+      case 0:
+      {
+        seg_time_cnt = 0;
+        total_time_cnt = 0;
+        cur_celsius_stable_cnt = 0;
+        seg_heating_err_cnt = 0;
+        process_step++;
+        last_celsius = temp_hotend[0].celsius;
+        break;
+      }
+      case 1:
+      {
+        if(temp_hotend[0].celsius > last_celsius)
+        {
+          cur_celsius_stable_cnt++;
+          if(cur_celsius_stable_cnt >= HOTEND_SEGMENTATION_CUR_CELSIUS_STABLE_CNT_MAX)
+          {
+            cur_celsius_stable_cnt = 0;
+            timer = millis() + SEC_TO_MS(1);
+            last_celsius = temp_hotend[0].celsius;
+            process_step++;
+          }
+        }
+        else
+        {
+          cur_celsius_stable_cnt = 0;
+        }
+        break;
+      }
+      case 2:
+      {
+        if(ELAPSED(millis(), timer))
+        {
+          seg_time_cnt++;
+          // MYSERIAL2.printf("hotend: segment: time_cnt %d, last %.2f, cur %.2f, tar %.2f, total_time %d\r\n", 
+          //                     seg_time_cnt, last_celsius, temp_hotend[0].celsius, (float)temp_hotend[0].target, total_time_cnt);
+          if(temp_hotend[0].celsius - last_celsius >= HOTEND_SEGMENTATION_INTERVAL_TEMP)
+          {
+            total_time_cnt += seg_time_cnt;
+            last_celsius = temp_hotend[0].celsius;
+            seg_heating_err_cnt = 0;
+            seg_time_cnt = 0;
+          }
+          else
+          {
+            if(seg_time_cnt >= HOTEND_SEGMENTATION_INTERVAL_TIME)
+            {
+              total_time_cnt += seg_time_cnt;
+              seg_heating_err_cnt++;
+              MYSERIAL2.printf("hotend: segment error: cnt %d, last %.2f, cur %.2f, tar %.2f, total_time %d\r\n", 
+                              seg_heating_err_cnt, last_celsius, temp_hotend[0].celsius, (float)temp_hotend[0].target, total_time_cnt);
+              if(seg_heating_err_cnt >= HOTEND_SEGMENTATION_HEATING_ERROR_CNT_MAX)
+              {
+                _temp_error((heater_id_t)0, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
+              }
+              last_celsius = temp_hotend[0].celsius;
+              seg_time_cnt = 0;
+            }
+          }
+          if(total_time_cnt > HOTEND_SEGMENTATION_TOTAL_TIME_MAX)
+          {
+            MYSERIAL2.printf("hotend: segment total_time error: total_time %d\r\n", total_time_cnt);
+            _temp_error((heater_id_t)0, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
+          }
+          timer = millis() + SEC_TO_MS(1);
+        }
+        break;
+      }
+    
+      default:
+      {
+        process_step = 0;
+        break;
+      }
+    }
+  }
+  else
+  {
+    process_step = 0;
+  }
+}
+#define TARGET_TEMP_STABLE_CNT_MAX 20
+#define HOTEND_TEMP_SHOCK_VALUE  15
+#define BED_TEMP_SHOCK_VALUE  10
+#define TEMP_SHOCK_CNT_MAX 30
+void Temperature::hotend_temp_shock_process(void)
+{
+  static celsius_float_t last_celsius = 0.0;
+  static uint8_t target_temp_stable_cnt = 0;
+  static uint32_t temp_shock_cnt = 0;
+  static celsius_t cur_target = 0;
+  static bool target_change_flag = false;
+
+  if(cur_target != temp_hotend[0].target)
+  {
+    cur_target = temp_hotend[0].target;
+    target_change_flag = true;
+  }
+
+  switch (hotend_temp_shock_process_step)
+  {
+  case 0:
+  {
+    if ((temp_hotend[0].target > 0) && 
+        (temp_hotend[0].celsius >= temp_hotend[0].target - TEMP_HYSTERESIS) &&
+        (temp_hotend[0].celsius <= temp_hotend[0].target + TEMP_HYSTERESIS))
+    {
+      target_temp_stable_cnt++;
+      if(target_temp_stable_cnt >= TARGET_TEMP_STABLE_CNT_MAX)
+      {
+        temp_shock_cnt = 0;
+        target_temp_stable_cnt = 0;
+        target_change_flag = false;
+        last_celsius = temp_hotend[0].celsius;
+        hotend_temp_shock_process_step++;
+        MYSERIAL2.printf("hotend: shock start: cur %.2f, tar %.2f\r\n", temp_hotend[0].celsius, (float)temp_hotend[0].target);
+      }
+    }
+    else
+    {
+      target_temp_stable_cnt = 0;
+    }
+    break;
+  }
+  case 1:
+  {
+    if(target_change_flag == false)
+    {
+      if ((temp_hotend[0].celsius < temp_hotend[0].target - HOTEND_TEMP_SHOCK_VALUE) ||
+          (temp_hotend[0].celsius > temp_hotend[0].target + HOTEND_TEMP_SHOCK_VALUE))
+      {
+        temp_shock_cnt++;
+        MYSERIAL2.printf("hotend: shock error: cnt %d, cur %.2f, tar %.2f, last %.2f\r\n", temp_shock_cnt, temp_hotend[0].celsius, (float)temp_hotend[0].target, last_celsius);
+        if(temp_shock_cnt >= TEMP_SHOCK_CNT_MAX)
+        {
+          _temp_error((heater_id_t)0, str_t_thermal_runaway, GET_TEXT(MSG_THERMAL_RUNAWAY));
+        }
+        target_temp_stable_cnt = 0;
+        temp_hotend[0].celsius = last_celsius;
+      }
+      else
+      {
+        target_temp_stable_cnt++;
+        if(target_temp_stable_cnt >= TARGET_TEMP_STABLE_CNT_MAX)
+        {
+          target_temp_stable_cnt = 0;
+          last_celsius = temp_hotend[0].celsius;
+        }
+      }
+    }
+    else
+    {
+      temp_shock_cnt = 0;
+      target_temp_stable_cnt = 0;
+      hotend_temp_shock_process_step = 0;
+    }
+    break;
+  }
+  default:
+  {
+    hotend_temp_shock_process_step = 0;
+    break;
+  }
+  }
+}
+void Temperature::bed_temp_shock_process(void)
+{
+  static celsius_float_t last_celsius = 0.0;
+  static uint8_t target_temp_stable_cnt = 0;
+  static uint32_t temp_shock_cnt = 0;
+  static celsius_t cur_target = 0;
+  static bool target_change_flag = false;
+
+  if(cur_target != temp_bed.target)
+  {
+    cur_target = temp_bed.target;
+    target_change_flag = true;
+  }
+
+  switch (bed_temp_shock_process_step)
+  {
+  case 0:
+  {
+    if ((temp_bed.target > 0) && 
+        (temp_bed.celsius >= temp_bed.target - TEMP_BED_HYSTERESIS) &&
+        (temp_bed.celsius <= temp_bed.target + TEMP_BED_HYSTERESIS))
+    {
+      target_temp_stable_cnt++;
+      if(target_temp_stable_cnt >= TARGET_TEMP_STABLE_CNT_MAX)
+      {
+        temp_shock_cnt = 0;
+        target_temp_stable_cnt = 0;
+        target_change_flag = false;
+        last_celsius = temp_bed.celsius;
+        bed_temp_shock_process_step++;
+        MYSERIAL2.printf("bed: shock start: cur %.2f, tar %.2f\r\n", temp_bed.celsius, (float)temp_bed.target);
+      }
+    }
+    else
+    {
+      target_temp_stable_cnt = 0;
+    }
+    break;
+  }
+  case 1:
+  {
+    if(target_change_flag == false)
+    {
+      if ((temp_bed.celsius < temp_bed.target - BED_TEMP_SHOCK_VALUE) ||
+          (temp_bed.celsius > temp_bed.target + BED_TEMP_SHOCK_VALUE))
+      {
+        temp_shock_cnt++;
+        MYSERIAL2.printf("bed: shock error: cnt %d, cur %.2f, tar %.2f, last %.2f\r\n", temp_shock_cnt, temp_bed.celsius, (float)temp_bed.target, last_celsius);
+        if(temp_shock_cnt >= TEMP_SHOCK_CNT_MAX)
+        {
+          _temp_error(H_BED, str_t_thermal_runaway, GET_TEXT(MSG_THERMAL_RUNAWAY));
+        }
+        target_temp_stable_cnt = 0;
+        temp_bed.celsius = last_celsius;
+      }
+      else
+      {
+        target_temp_stable_cnt++;
+        if(target_temp_stable_cnt >= TARGET_TEMP_STABLE_CNT_MAX)
+        {
+          target_temp_stable_cnt = 0;
+          last_celsius = temp_bed.celsius;
+        }
+      }
+    }
+    else
+    {
+      temp_shock_cnt = 0;
+      target_temp_stable_cnt = 0;
+      bed_temp_shock_process_step = 0;
+    }
+    break;
+  }
+  default:
+  {
+    bed_temp_shock_process_step = 0;
+    break;
+  }
+  }
+}
+void Temperature::temp_protect_process(void)
+{
+  hotend_temp_heating_process();
+  hotend_temp_slide_window_process();
+  hotend_segmentation_heating_process();
+  hotend_temp_shock_process();
+  bed_temp_heating_process();
+  bed_temp_slide_window_process();
+  bed_temp_shock_process();
 }
 #endif
 void Temperature::_temp_error(const heater_id_t heater_id, PGM_P const serial_msg, PGM_P const lcd_msg) {
@@ -1671,7 +2078,6 @@ void Temperature::manage_heater() {
 
   #if ENABLED(ANKER_TEMP_WATCH)
     _temp_watch();
-    // _temp_watch_mos2_deal();
   #endif
 
   static bool no_reentry = false;  // Prevent recursion
@@ -1689,6 +2095,10 @@ void Temperature::manage_heater() {
 
   if (!updateTemperaturesIfReady()) return; // Will also reset the watchdog if temperatures are ready
 
+  #if ENABLED(ANKER_TEMP_WATCH)
+    temp_protect_process();
+  #endif
+  
   #if DISABLED(IGNORE_THERMOCOUPLE_ERRORS)
     #if TEMP_SENSOR_0_IS_MAX_TC
       if (degHotend(0) > _MIN(HEATER_0_MAXTEMP, TEMP_SENSOR_0_MAX_TC_TMAX - 1.0)) max_temp_error(H_E0);
@@ -1713,7 +2123,8 @@ void Temperature::manage_heater() {
         if (degHotend(e) > temp_range[e].maxtemp)
         {
           hotend_maxtemp_err_cnt[e]++;
-          if(hotend_maxtemp_err_cnt[e] >= 2*HOTEND_MAXTEMP_ERR_CNT_MAX)
+          MYSERIAL2.printf("hotend: maxtemp error: cnt %d, cur %.2f, maxtemp %d\r\n", hotend_maxtemp_err_cnt[e], degHotend(e), temp_range[e].maxtemp);
+          if(hotend_maxtemp_err_cnt[e] >= HOTEND_BED_TEMP_ERR_CNT_MAX)
           {
             max_temp_error((heater_id_t)e);
           }
@@ -1733,10 +2144,6 @@ void Temperature::manage_heater() {
 
       temp_hotend[e].soft_pwm_amount = (temp_hotend[e].celsius > temp_range[e].mintemp || is_preheating(e)) && temp_hotend[e].celsius < temp_range[e].maxtemp ? (int)get_pid_output_hotend(e) >> 1 : 0;
 
-      #if ENABLED(ANKER_TEMP_WATCH)
-      if(!temp_watch_is_mos2_self_test())
-      {
-      #endif
       #if WATCH_HOTENDS
         // Make sure temperature is increasing
         if (watch_hotend[e].elapsed(ms)) {          // Enabled and time to check?
@@ -1745,13 +2152,23 @@ void Temperature::manage_heater() {
           else {
             TERN_(DWIN_CREALITY_LCD, DWIN_Popup_Temperature(0));
             TERN_(ANKERUI,ankerUI.gui_heat_failed_show());
+            MYSERIAL2.printf("hotend: watch error\r\n");
             _temp_error((heater_id_t)e, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
           }
         }
+        #if ENABLED(ANKER_TEMP_WATCH)
+        // Make sure temperature is increasing
+        if (anker_watch_hotend[e].elapsed(ms)) {          // Enabled and time to check?
+          if (anker_watch_hotend[e].check(degHotend(e)))  // Increased enough?
+            anker_start_watching_hotend(e);               // If temp reached, turn off elapsed check
+          else {
+            MYSERIAL2.printf("hotend: anker watch error\r\n");
+            _temp_error((heater_id_t)e, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
+          }
+        }
+        #endif
       #endif
-      #if ENABLED(ANKER_TEMP_WATCH)
-      }
-      #endif
+      
 
     } // HOTEND_LOOP
 
@@ -1781,7 +2198,19 @@ void Temperature::manage_heater() {
   #if HAS_HEATED_BED
 
     #if ENABLED(THERMAL_PROTECTION_BED)
-      if (degBed() > BED_MAXTEMP) max_temp_error(H_BED);
+      if (degBed() > BED_MAXTEMP)
+      {
+        bed_maxtemp_err_cnt++;
+        MYSERIAL2.printf("bed: maxtemp error: cnt %d, cur %.2f, maxtemp %d\r\n", bed_maxtemp_err_cnt, degBed(), BED_MAXTEMP);
+        if(bed_maxtemp_err_cnt >= HOTEND_BED_TEMP_ERR_CNT_MAX)
+        {
+          max_temp_error(H_BED);
+        }
+      }
+      else
+      {
+        bed_maxtemp_err_cnt = 0;
+      }
     #endif
 
     #if WATCH_BED
@@ -1792,6 +2221,7 @@ void Temperature::manage_heater() {
         else {
           TERN_(DWIN_CREALITY_LCD, DWIN_Popup_Temperature(0));
           TERN_(AnkerUI,ankerUI.gui_heat_failed_show());
+          MYSERIAL2.printf("bed: watch error\r\n");
           _temp_error(H_BED, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
         }
       }
@@ -2495,15 +2925,16 @@ void Temperature::updateTemperaturesFromRawValues() {
         const int16_t rawtemp = temp_hotend[e].raw * tdir; // normal direction, +rawtemp, else -rawtemp
         if (rawtemp > temp_range[e].raw_max * tdir) 
         {
-          hotend_maxtemp_err_cnt[e]++;
-          if(hotend_maxtemp_err_cnt[e] >= 2*HOTEND_MAXTEMP_ERR_CNT_MAX)
+          hotend_maxraw_err_cnt[e]++;
+          MYSERIAL2.printf("hotend: maxraw error: cnt %d, raw %d, raw_max %d\r\n", hotend_maxraw_err_cnt[e], rawtemp, temp_range[e].raw_max * tdir);
+          if(hotend_maxraw_err_cnt[e] >= HOTEND_BED_TEMP_ERR_CNT_MAX)
           {
             max_temp_error((heater_id_t)e);
           }
         }
         else
         {
-          hotend_maxtemp_err_cnt[e] = 0;
+          hotend_maxraw_err_cnt[e] = 0;
         }
 
         const bool heater_on = temp_hotend[e].target > 0;
@@ -2511,15 +2942,16 @@ void Temperature::updateTemperaturesFromRawValues() {
           #if MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED > 1
             if (++consecutive_low_temperature_error[e] >= MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED)
           #endif
-          hotend_mintemp_err_cnt[e]++;
-          if(hotend_mintemp_err_cnt[e] >= HOTEND_MINTEMP_ERR_CNT_MAX)
+          hotend_minraw_err_cnt[e]++;
+          MYSERIAL2.printf("hotend: minraw error: cnt %d, raw %d, raw_min %d\r\n", hotend_minraw_err_cnt[e], rawtemp, temp_range[e].raw_min * tdir);
+          if(hotend_minraw_err_cnt[e] >= HOTEND_BED_TEMP_ERR_CNT_MAX)
           {
             min_temp_error((heater_id_t)e);
           }
         }
         else
         {
-          hotend_mintemp_err_cnt[e] = 0;
+          hotend_minraw_err_cnt[e] = 0;
         }
 
         #if MAX_CONSECUTIVE_LOW_TEMPERATURE_ERROR_ALLOWED > 1
@@ -2533,8 +2965,32 @@ void Temperature::updateTemperaturesFromRawValues() {
 
   #define TP_CMP(S,A,B) (TEMPDIR(S) < 0 ? ((A)<(B)) : ((A)>(B)))
   #if ENABLED(THERMAL_PROTECTION_BED)
-    if (TP_CMP(BED, temp_bed.raw, maxtemp_raw_BED)) max_temp_error(H_BED);
-    if (temp_bed.target > 0 && TP_CMP(BED, mintemp_raw_BED, temp_bed.raw)) min_temp_error(H_BED);
+    if (TP_CMP(BED, temp_bed.raw, maxtemp_raw_BED))
+    {
+      bed_maxraw_err_cnt++;
+      MYSERIAL2.printf("bed: maxraw error: cnt %d, raw %d, raw_max %d\r\n", bed_maxraw_err_cnt, temp_bed.raw, maxtemp_raw_BED);
+      if(bed_maxraw_err_cnt >= HOTEND_BED_TEMP_ERR_CNT_MAX)
+      {
+        max_temp_error(H_BED);
+      }
+    }
+    else
+    {
+      bed_maxraw_err_cnt = 0;
+    }
+    if (temp_bed.target > 0 && TP_CMP(BED, mintemp_raw_BED, temp_bed.raw))
+    {
+      bed_minraw_err_cnt++;
+      MYSERIAL2.printf("bed: minraw error: cnt %d, raw %d, raw_min %d\r\n", bed_minraw_err_cnt, temp_bed.raw, mintemp_raw_BED);
+      if(bed_minraw_err_cnt >= HOTEND_BED_TEMP_ERR_CNT_MAX)
+      {
+        min_temp_error(H_BED);
+      }
+    }
+    else
+    {
+      bed_minraw_err_cnt = 0;
+    }
   #endif
 
   #if BOTH(HAS_HEATED_CHAMBER, THERMAL_PROTECTION_CHAMBER)
@@ -2997,12 +3453,29 @@ void Temperature::init() {
 
     switch (state) {
       // Inactive state waits for a target temperature to be set
-      case TRInactive: break;
+      case TRInactive:
+        cnt = 0;
+        break;
 
       // When first heating, wait for the temperature to be reached then go to Stable state
       case TRFirstHeating:
         if (current < running_temp) break;
-        state = TRStable;
+        timer = millis() + SEC_TO_MS(3);
+        state = TRprestable;
+      
+      case TRprestable:
+        if (current >= running_temp - hysteresis_degc)
+        {
+          if(ELAPSED(millis(), timer))
+            state = TRStable;
+        }
+        else
+        {
+          cnt++;
+          state = TRFirstHeating;
+          MYSERIAL2.printf("tr_state error: fallback, cnt %d, id %d, cur %f, tar %f\r\n", cnt, heater_id, current, running_temp);
+        }
+        break;
 
       // While the temperature is stable watch for a bad temperature
       case TRStable:

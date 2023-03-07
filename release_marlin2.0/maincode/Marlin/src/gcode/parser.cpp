@@ -36,12 +36,13 @@ bool GCodeParser::volumetric_enabled;
 #if ENABLED(PHOTO_Z_LAYER)
   //begin add by jason.wu for detect layer change to notify remote controller capture
   uint8_t GCodeParser::layer_change_flag = 0;
-  int32_t GCodeParser::layer_num = 0;
+  
+  float GCodeParser::layer_num = 0;
   //end add by jason.wu for detect layer change to notify remote controller capture
 
   /******************************************************************/
     bool       GCodeParser::report_layer;
-    int32_t    GCodeParser::report_layer_num;
+    float     GCodeParser::report_layer_num;
     xyze_pos_t GCodeParser::report_pos;  
 #endif
 

@@ -251,7 +251,7 @@ typedef struct block_t {
   #if ENABLED(PHOTO_Z_LAYER)
     //begin add by jason.wu for detect layer change to notify remote controller capture
     int8_t layer_change_flag;
-    int32_t layer_num;
+    float layer_num;
     xyze_pos_t target_layer_start_pos;
     //end add by jason.wu for detect layer change to notify remote controller capture
   #endif

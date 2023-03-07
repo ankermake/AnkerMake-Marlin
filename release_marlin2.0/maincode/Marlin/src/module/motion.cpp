@@ -2080,6 +2080,11 @@ void prepare_line_to_destination() {
     #if ENABLED(ANKER_ANLIGN)
       if ((axis == Z_AXIS)&&is_z_rise)
       {
+        if(anker_align.is_g36_cmd_executing == false)
+        {
+          anker_align.z1_value = anker_align.eeprom_z1_value;
+          anker_align.z2_value = anker_align.eeprom_z2_value;
+        }
         anker_align.run_align();
       }
     #endif
@@ -2660,6 +2665,19 @@ void prepare_line_to_destination() {
       // Move away from the endstop by the axis HOMING_BUMP_MM
       if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("probe_Move Away: ", -bump, "mm");
        anker_do_probe_homing_move(axis, -bump, TERN(HOMING_Z_WITH_PROBE, (axis == Z_AXIS ? MMM_TO_MMS(HOMING_RISE_SPEED) : 0), 0), false);
+
+      if(READ(Z_MIN_PROBE_PIN) == Z_MIN_PROBE_STATE)
+      {
+        MYSERIAL2.printf("probe: homeaxis signal error!\r\n");
+        #if ENABLED(PROVE_CONTROL)
+        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+        #endif
+        set_axis_is_at_home(axis);
+        sync_plan_position();
+        destination[axis] = current_position[axis];
+        probe.anker_stow();
+        return 0;
+      }
 
       #if ENABLED(DETECT_BROKEN_ENDSTOP)
         // Check for a broken endstop

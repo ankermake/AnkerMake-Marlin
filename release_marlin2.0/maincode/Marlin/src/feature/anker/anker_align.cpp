@@ -1,8 +1,8 @@
 /*
  * @Author       : harley
  * @Date         : 2022-04-27 20:35:23
- * @LastEditors  : harley
- * @LastEditTime : 
+ * @LastEditors: winter.tian
+ * @LastEditTime: 2023-03-01 12:17:41
  * @Description  :
  */
 #include "../../inc/MarlinConfig.h"
@@ -16,6 +16,9 @@
 
   Anker_Align anker_align;
     
+    float Anker_Align::eeprom_z1_value=0;
+    float Anker_Align::eeprom_z2_value=0;
+    bool Anker_Align::is_g36_cmd_executing=false;
     float Anker_Align::z1_value=0;
     float Anker_Align::z2_value=0;
     //uint8_t Anker_Align::anker_is_leveing=0;
@@ -24,9 +27,9 @@
     void Anker_Align:: init(void)
     {
       anker_align.xy[0].x=PROBING_MARGIN;
-      anker_align.xy[0].y=117.5;
+      anker_align.xy[0].y=110;
       anker_align.xy[1].x=X_BED_SIZE-PROBING_MARGIN;
-      anker_align.xy[1].y=117.5;
+      anker_align.xy[1].y=110;
       #ifdef  ALIGN_PER_RESET
       anker_align.reset();
       #endif
@@ -81,16 +84,31 @@
     void Anker_Align::auto_align(void)
     {
      uint16_t num=0;
+     is_g36_cmd_executing = true;
      const ProbePtRaise raise_after =  PROBE_PT_RAISE;
      anker_align.init();
      gcode.process_subcommands_now_P(PSTR("G28"));
      for(num=0;num<ANLIGN_NUM;num++)
      {
-       do_blocking_move_to_z(current_position.z+ANLIGN_RISE);
-       const float z1 = probe.probe_at_point(anker_align.xy[0], raise_after, 0, true, false);
-       do_blocking_move_to_z(current_position.z+ANLIGN_RISE);
-       const float z2 = probe.probe_at_point(anker_align.xy[1], raise_after, 0, true, false);
-       float rise_z=0;
+         do_blocking_move_to_z(current_position.z+ANLIGN_RISE);
+         const float z1 = probe.probe_at_point(anker_align.xy[0], raise_after, 0, true, false);
+         if(isnan(z1))
+         {
+            SERIAL_ECHO("ok\r\n");
+            SERIAL_ERROR_MSG("z1 is nan error!\r\n");
+            SERIAL_ERROR_MSG(STR_ERR_PROBING_FAILED);
+            kill();
+         }
+         do_blocking_move_to_z(current_position.z+ANLIGN_RISE);
+         const float z2 = probe.probe_at_point(anker_align.xy[1], raise_after, 0, true, false);
+         if(isnan(z2))
+         {
+            SERIAL_ECHO("ok\r\n");
+            SERIAL_ERROR_MSG("z2 is nan error!\r\n");
+            SERIAL_ERROR_MSG(STR_ERR_PROBING_FAILED);
+            kill();
+         }
+         float rise_z=0;
          rise_z=(SCREW_DISTANCE/(anker_align.xy[1].x-anker_align.xy[0].x))*ABS(z1-z2);
          SERIAL_ECHO(" z1:");
          SERIAL_ECHO(z1);
@@ -98,32 +116,37 @@
          SERIAL_ECHO(" z2:");
          SERIAL_ECHO(z2);
          SERIAL_ECHO(" \r\n");
-       if(ABS(z1-z2)>ANLIGN_MAX_VALUE)
-       {
-         SERIAL_ECHO("ok\r\n");
-         SERIAL_ERROR_MSG("Adjustment range over 2mm!!\r\n");
-         SERIAL_ERROR_MSG(STR_ERR_PROBING_FAILED);
-         kill();
-       }
-       if(ABS(z1-z2)<=ANLIGN_ALLOWED)
-       {
-         SERIAL_ECHO("echo:anlign ok!\r\n");
-         gcode.process_subcommands_now_P(PSTR("M500\n"));
-         break;
-       }
-       else if(z1>z2)
-       {
-          anker_align.add_z1_value(rise_z);
-       }
-       else if(z2>z1)
-       {
-          anker_align.add_z2_value(rise_z);
-       }
+         if(ABS(z1-z2)>ANLIGN_MAX_VALUE)
+         {
+            SERIAL_ECHO("ok\r\n");
+            SERIAL_ERROR_MSG("Adjustment range over 2mm!!\r\n");
+            SERIAL_ERROR_MSG(STR_ERR_PROBING_FAILED);
+            kill();
+         }
+         if(ABS(z1-z2)<=ANLIGN_ALLOWED)
+         {
+            anker_align.eeprom_z1_value = anker_align.z1_value;
+            anker_align.eeprom_z2_value = anker_align.z2_value;
+            is_g36_cmd_executing = false;
+            SERIAL_ECHO("echo:anlign ok!\r\n");
+            gcode.process_subcommands_now_P(PSTR("M500\n"));
+            MYSERIAL2.printf("anker_align.eeprom_z1_value: %f\r\n", anker_align.eeprom_z1_value);
+            MYSERIAL2.printf("anker_align.eeprom_z2_value: %f\r\n", anker_align.eeprom_z2_value);
+            break;
+         }
+         else if(z1>z2)
+         {
+            anker_align.add_z1_value(rise_z);
+         }
+         else if(z2>z1)
+         {
+            anker_align.add_z2_value(rise_z);
+         }
     
          anker_align.xy[0].x=PROBING_MARGIN;
-         anker_align.xy[0].y+=1.5;
+         anker_align.xy[0].y+=3;
          anker_align.xy[1].x=X_BED_SIZE-PROBING_MARGIN;
-         anker_align.xy[1].y+=1.5;
+         anker_align.xy[1].y+=3;
 
          if(num==(ANLIGN_NUM-1))
          {

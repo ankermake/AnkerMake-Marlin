@@ -2,7 +2,7 @@
  * @Author       : winter
  * @Date         : 2022-05-12 20:30:21
  * @LastEditors: winter.tian
- * @LastEditTime: 2022-12-16 12:02:56
+ * @LastEditTime: 2023-02-07 14:49:28
  * @Description  :
  */
 #include "anker_nozzle_board.h"
@@ -461,7 +461,6 @@ static void anker_nozzle_board_tx_deal(void)
             memset(p_info->tx_buf, 0, sizeof(p_info->tx_buf));
             p_info->com_abnormal_flag = 0;
             p_info->tx_deal_step = 10;
-            thermalManager.temp_watch_mos2_stop_flag = false;
         }
         else
         {
@@ -486,7 +485,6 @@ static void anker_nozzle_board_tx_deal(void)
             p_info->com_abnormal_flag = 1;
             p_info->tx_init_flag = 0;
             p_info->tx_deal_step = 0;
-            thermalManager.temp_watch_mos2_stop_flag = true;
             debug_log_printf("[nozzle-%d]:TX_ERROR_TIMES: %d\r\n", __LINE__, p_info->tx_error_times);
         }
         else
@@ -810,7 +808,7 @@ static void anker_nozzle_board_deal(void)
     anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
 
 #if ENABLED(ANKER_TEMP_WATCH)
-    if (thermalManager.temp_watch_is_error() || thermalManager.temp_watch_is_mos2_self_test())
+    if (thermalManager.temp_watch_is_error())
     {
         p_info->power_off();
         return;

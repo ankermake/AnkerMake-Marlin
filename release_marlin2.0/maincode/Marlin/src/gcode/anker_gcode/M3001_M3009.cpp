@@ -2,7 +2,7 @@
  * @Author       : winter
  * @Date         : 2022-05-24 14:08:20
  * @LastEditors: winter.tian
- * @LastEditTime: 2022-12-16 11:36:44
+ * @LastEditTime: 2023-03-07 10:40:55
  * @Description  :
  */
 #include "../../inc/MarlinConfig.h"
@@ -290,14 +290,6 @@ void GcodeSuite::M3009()
   }
 }
 
-#if ENABLED(ANKER_TEMP_WATCH)
-// M3008 MOS2 self-test
-void GcodeSuite::M3008()
-{
-  MYSERIAL2.printf("Mos2:Start\r\n");
-  MYSERIAL2.printf("Mos2:End\r\n");
-}
-#endif
 #if 0
 static bool flash_sector_read(uint32_t addr, uint32_t *data)
 {

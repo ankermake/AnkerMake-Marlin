@@ -145,7 +145,7 @@ float find_max_min_diff(void)
       NOLESS(hi_val, z_values[i][j]);
     }
   }
-  SERIAL_ECHOLNPAIR_P("MATRIX: MIN=",lo_val,",MAX=",hi_val,"DIFF=",hi_val-lo_val);
+  SERIAL_ECHOLNPAIR_P("MATRIX: MIN=",lo_val,",MAX=",hi_val,",DIFF=",hi_val-lo_val);
   return hi_val - lo_val;
 }
 

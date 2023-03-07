@@ -512,8 +512,8 @@ typedef struct SettingsDataStruct {
   #endif
   
   #if ENABLED(ANKER_ANLIGN)
-    float z1_value;
-    float z2_value;
+    float eeprom_z1_value;
+    float eeprom_z2_value;
   #endif
 
   #if ENABLED(ANKER_LEVEING)
@@ -1464,8 +1464,8 @@ void MarlinSettings::postprocess() {
     #endif
 
     #if ENABLED(ANKER_ANLIGN)
-      EEPROM_WRITE(anker_align.z1_value);
-      EEPROM_WRITE(anker_align.z2_value);
+      EEPROM_WRITE(anker_align.eeprom_z1_value);
+      EEPROM_WRITE(anker_align.eeprom_z2_value);
     #endif
 
 
@@ -2382,8 +2382,8 @@ void MarlinSettings::postprocess() {
       #endif
 
       #if ENABLED(ANKER_ANLIGN)
-        EEPROM_READ(anker_align.z1_value);
-        EEPROM_READ(anker_align.z2_value);
+        EEPROM_READ(anker_align.eeprom_z1_value);
+        EEPROM_READ(anker_align.eeprom_z2_value);
       #endif
 
       #if ENABLED(ANKER_LEVEING)
@@ -3087,8 +3087,8 @@ void MarlinSettings::reset() {
   TERN_(EXTENSIBLE_UI, ExtUI::onFactoryReset());
 
   #if ENABLED(ANKER_ANLIGN)
-    anker_align.z1_value=0;
-    anker_align.z2_value=0;
+    anker_align.eeprom_z1_value=0;
+    anker_align.eeprom_z2_value=0;
   #endif
 
   #if ENABLED(ANKER_LEVEING)
@@ -4038,10 +4038,10 @@ void MarlinSettings::reset() {
     CONFIG_ECHO_HEADING("anker anlign:");
           // CONFIG_ECHO_START();
           CONFIG_ECHO_MSG(
-            "  z1:", anker_align.z1_value
+            "  z1:", anker_align.eeprom_z1_value
           );
           CONFIG_ECHO_MSG(
-            "  z2:", anker_align.z2_value
+            "  z2:", anker_align.eeprom_z2_value
           );
     #endif
     //2021-10-18 harley

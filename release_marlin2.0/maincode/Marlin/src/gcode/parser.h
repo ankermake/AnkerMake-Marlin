@@ -92,16 +92,16 @@ public:
   #if ENABLED(PHOTO_Z_LAYER)
     //begin add by jason.wu for detect layer change to notify remote controller capture
     static uint8_t layer_change_flag;
-    static int32_t layer_num;
+    static float layer_num;
     //end add by jason.wu for detect layer change to notify remote controller capture
-    static bool       report_layer;
-    static int32_t    report_layer_num;
+    static bool       report_layer;//diretion
+    static float    report_layer_num;
     static xyze_pos_t report_pos;     
 
     FORCE_INLINE static void report_z_axis_process(void) {
       if (report_layer) {        
         char buf[128];
-        snprintf(buf,sizeof(buf), "\r\n\r\nz-upraise:%d,%ld,%.4f,%.4f,%.4f\r\n",report_layer, report_layer_num,
+        snprintf(buf,sizeof(buf), "\r\n\r\nz-upraise:%d,%.3f,%.4f,%.4f,%.4f\r\n",report_layer, report_layer_num,
         report_pos.a,report_pos.b, report_pos.c);
         SERIAL_ECHOPAIR(buf);
         report_layer = 0;

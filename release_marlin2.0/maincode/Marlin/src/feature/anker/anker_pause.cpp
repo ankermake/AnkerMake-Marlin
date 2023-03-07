@@ -2,7 +2,7 @@
  * @Author       : winter
  * @Date         : 2022-04-02 10:50:23
  * @LastEditors: winter.tian
- * @LastEditTime: 2023-03-07 10:11:48
+ * @LastEditTime: 2023-03-06 15:05:28
  * @Description  :
  */
 #include "anker_pause.h"
@@ -128,6 +128,7 @@ static void anker_pause_block_deal(void)
     planner.clear_block_buffer();
 }
 
+#define PRINT_LAYER_NUM 10
 static void anker_pause_deal(void)
 {
     anker_pause_info_t *p_info = get_anker_pause_info();
@@ -166,7 +167,7 @@ static void anker_pause_deal(void)
             }
 
             memset(p_info->tmp_cmd_buf, 0, sizeof(p_info->tmp_cmd_buf));
-            sprintf(p_info->tmp_cmd_buf, "<== %d ==> : queue_length = %d --- %d\r\n", __LINE__, p_info->save_queue_buf.length, queue.ring_buffer.length);
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "<== %d ==> : queue_length = %d --- %d\r\n", __LINE__, p_info->save_queue_buf.length, queue.ring_buffer.length);
             MYSERIAL1.printf(p_info->tmp_cmd_buf);
 
             p_info->pause_deal_step = ANKER_PAUSE_DEAL_STEP_SAVE_BLOCK;
@@ -230,8 +231,17 @@ static void anker_pause_deal(void)
         // planner.clear_block_buffer();
         p_info->pause_block_state = ANKER_PAUSE_BLOCK_DISABLE;
         p_info->pause_queue_state = ANKER_PAUSE_QUEUE_DISABLE;
-        queue.ring_buffer.enqueue("G1 X10 Y0 F15000\r\n");
-        // MYSERIAL1.printf("go zero\r\n");
+        if(parser.report_layer_num <= PRINT_LAYER_NUM)
+        {
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F12000\r\n", p_info->save_block_buf.cur_pos.z + 2);
+            queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
+        }
+        queue.ring_buffer.enqueue("G1 X10 Y0 F12000\r\n");
+        if(parser.report_layer_num <= PRINT_LAYER_NUM)
+        {
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F12000\r\n", p_info->save_block_buf.cur_pos.z);
+            queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
+        }
         p_info->pause_serial_state = ANKER_PAUSE_SERIAL_DISABLE;
 
         p_info->pause_state = ANKER_PAUSE_OK;
@@ -247,20 +257,25 @@ static void anker_pause_deal(void)
 
             memset(p_info->tmp_cmd_buf, 0, sizeof(p_info->tmp_cmd_buf));
             #if ENABLED(ANKER_PAUSE_RESET)
-            sprintf(p_info->tmp_cmd_buf, "G28 X0 Y0 F15000\r\n");
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G28 X0 Y0 F15000\r\n");
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
             #endif
             #if ENABLED(ANKER_PAUSE_PRE_EXTRUDE)
-            sprintf(p_info->tmp_cmd_buf, "G92 E%f\r\n", p_info->save_block_buf.cur_pos.e - 20);
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G92 E%f\r\n", p_info->save_block_buf.cur_pos.e - 20);
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
-            sprintf(p_info->tmp_cmd_buf, "G1 E%f F500\r\n", p_info->save_block_buf.cur_pos.e);
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 E%f F500\r\n", p_info->save_block_buf.cur_pos.e);
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
             #endif
-            sprintf(p_info->tmp_cmd_buf, "G1 X%f Y%f Z%f F15000\r\n", p_info->save_block_buf.cur_pos.x,
+            if(parser.report_layer_num <= PRINT_LAYER_NUM)
+            {
+                snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F12000\r\n", p_info->save_block_buf.cur_pos.z + 2);
+                queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
+            }
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 X%f Y%f Z%f F12000\r\n", p_info->save_block_buf.cur_pos.x,
                     p_info->save_block_buf.cur_pos.y, p_info->save_block_buf.cur_pos.z);
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
             // MYSERIAL1.printf("<==> CONTINUE %s",p_info->tmp_cmd_buf);
-            sprintf(p_info->tmp_cmd_buf, "G1 F%f\r\n", p_info->save_block_buf.cur_fr_mm_s);
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 F%f\r\n", p_info->save_block_buf.cur_fr_mm_s);
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
 
             p_info->pause_deal_step = ANKER_PAUSE_DEAL_STEP_RECOVER_PRE;

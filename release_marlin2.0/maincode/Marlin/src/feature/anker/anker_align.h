@@ -1,8 +1,8 @@
 /*
  * @Author       : harley
  * @Date         : 2022-04-31 20:35:23
- * @LastEditors  : harley
- * @LastEditTime : 
+ * @LastEditors: winter.tian
+ * @LastEditTime: 2023-02-20 10:19:35
  * @Description  :
  */
 #include "../../inc/MarlinConfig.h"
@@ -11,6 +11,8 @@
     class Anker_Align {
     public:
       static xy_pos_t xy[NUM_Z_STEPPER_DRIVERS];
+      static float eeprom_z1_value,eeprom_z2_value;
+      static bool is_g36_cmd_executing;
       static float z1_value,z2_value;
       //static uint8_t anker_is_leveing;
       void init(void);

@@ -759,6 +759,7 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
     #else
       UNUSED(plbl);
     #endif
+
     return probe_fail || early_fail;
   };
 
@@ -786,6 +787,12 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
     #else
      do_blocking_move_to_z(current_position.z + Z_CLEARANCE_MULTI_PROBE, z_probe_fast_mm_s);
     #endif
+
+    if(READ(Z_MIN_PROBE_PIN) == Z_MIN_PROBE_STATE)
+    {
+      MYSERIAL2.printf("probe: up 1 signal error!\r\n");
+      return NAN;
+    }
 
   #elif Z_PROBE_FEEDRATE_FAST != Z_PROBE_FEEDRATE_SLOW
 
@@ -938,22 +945,44 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
   #endif
 
   float measured_z = NAN;
-  if (!deploy()) measured_z = run_z_probe(sanity_check) + offset.z;
-  if (!isnan(measured_z)) {
-    const bool big_raise = raise_after == PROBE_PT_BIG_RAISE;
-    if (big_raise || raise_after == PROBE_PT_RAISE)
-    {
-      #if ENABLED(PROVE_CONTROL)
-       do_blocking_move_to_z(current_position.z + (big_raise ? 25 : Z_CLEARANCE_BETWEEN_PROBES),  MMM_TO_MMS(HOMING_RISE_SPEED));
-      #else
-       do_blocking_move_to_z(current_position.z + (big_raise ? 25 : Z_CLEARANCE_BETWEEN_PROBES), z_probe_fast_mm_s);
-      #endif
-    }
-    else if (raise_after == PROBE_PT_STOW || raise_after == PROBE_PT_LAST_STOW)
-      if (stow()) measured_z = NAN;   // Error on stow?
+  uint8_t retry_cnt = 0;
+  while(retry_cnt <= 3)
+  {
+    if (!deploy()) measured_z = run_z_probe(sanity_check) + offset.z;
+    if (!isnan(measured_z)) {
+      const bool big_raise = raise_after == PROBE_PT_BIG_RAISE;
+      if (big_raise || raise_after == PROBE_PT_RAISE)
+      {
+        #if ENABLED(PROVE_CONTROL)
+        do_blocking_move_to_z(current_position.z + (big_raise ? 25 : Z_CLEARANCE_BETWEEN_PROBES),  MMM_TO_MMS(HOMING_RISE_SPEED));
+        #else
+        do_blocking_move_to_z(current_position.z + (big_raise ? 25 : Z_CLEARANCE_BETWEEN_PROBES), z_probe_fast_mm_s);
+        #endif
+      }
+      else if (raise_after == PROBE_PT_STOW || raise_after == PROBE_PT_LAST_STOW)
+        if (stow()) measured_z = NAN;   // Error on stow?
 
-    if (verbose_level > 2)
-      SERIAL_ECHOLNPAIR("Bed X: ", LOGICAL_X_POSITION(rx), " Y: ", LOGICAL_Y_POSITION(ry), " Z: ", measured_z);
+      if (verbose_level > 2)
+        SERIAL_ECHOLNPAIR("Bed X: ", LOGICAL_X_POSITION(rx), " Y: ", LOGICAL_Y_POSITION(ry), " Z: ", measured_z);
+
+      if(READ(Z_MIN_PROBE_PIN) == Z_MIN_PROBE_STATE)
+      {
+        MYSERIAL2.printf("probe: up 2 signal error!\r\n");
+        measured_z = NAN;
+      }
+      else
+      {
+        retry_cnt = 0;
+        break;
+      }
+    }
+    if (isnan(measured_z))
+    {
+      retry_cnt++;
+      MYSERIAL2.printf("probe: retry_cnt %d\r\n", retry_cnt);
+      do_blocking_move_to_z(current_position.z + 1, MMM_TO_MMS(HOMING_RISE_SPEED));
+      do_blocking_move_to_z(current_position.z - 1, MMM_TO_MMS(HOMING_RISE_SPEED));
+    }
   }
 
   if (isnan(measured_z)) {

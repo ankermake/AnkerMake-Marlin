@@ -227,8 +227,8 @@ void GcodeSuite::get_destination_from_command() {
     if (parser.linearval('L') > 0)
     {
       parser.layer_change_flag = 1;
-      parser.layer_num = parser.value_int();
-      SERIAL_ECHOLNPAIR("\r\nLaySW:",parser.layer_num);
+      parser.layer_num = parser.value_float();
+      SERIAL_ECHOLNPAIR("\r\nLaySW:",(int)parser.layer_num);
     }
     //end add by jason.wu for detect layer change to notify remote controller capture
   #endif
@@ -1120,9 +1120,6 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
             case 3004: M3004(); break;
             case 3005: M3005(); break;
             case 3009: M3009(); break;
-          #endif
-          #if ENABLED(ANKER_TEMP_WATCH)
-            case 3008: M3008(); break;
           #endif
           #if ENABLED(EVT_HOMING_5X)
             case 89: M89(); break;  

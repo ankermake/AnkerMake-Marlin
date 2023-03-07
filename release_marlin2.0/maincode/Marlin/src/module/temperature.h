@@ -41,8 +41,7 @@
   #define SOFT_PWM_SCALE 0
 #endif
 
-#define HOTEND_MINTEMP_ERR_CNT_MAX  20
-#define HOTEND_MAXTEMP_ERR_CNT_MAX  20
+#define HOTEND_BED_TEMP_ERR_CNT_MAX 20
 
 #define HOTEND_INDEX TERN(HAS_MULTI_HOTEND, e, 0)
 #define E_NAME TERN_(HAS_MULTI_HOTEND, e)
@@ -193,9 +192,43 @@ typedef struct TempInfo {
   uint16_t acc;
   int16_t raw;
   celsius_float_t celsius;
-  inline void reset() { acc = 0; }
-  inline void sample(const uint16_t s) { acc += s; }
-  inline void update() { raw = acc; }
+  #if ENABLED(ANKER_TEMP_ADC_FILTER)
+    #define TEMP_ADC_EXTREMUM_DIFF_VALUE 100
+    uint16_t sampling_buf[OVERSAMPLENR];
+    uint16_t sampling_count, min, max;
+    uint16_t last_acc;
+
+    inline void reset() { acc = 0; sampling_count = 0;}
+    inline void sample(const uint16_t s)
+    {
+      sampling_buf[sampling_count++ % OVERSAMPLENR] = s;
+      acc += s;
+    }
+    inline void update()
+    {
+      min = max = sampling_buf[0];
+      for (uint8_t i=0; i<OVERSAMPLENR; i++)
+      {
+          if (sampling_buf[i] < min)
+              min = sampling_buf[i];
+          if (sampling_buf[i] > max)
+              max = sampling_buf[i];
+      }
+      if((max - min) > TEMP_ADC_EXTREMUM_DIFF_VALUE)
+      {
+        raw = last_acc;
+      }
+      else
+      {
+        raw = acc;
+        last_acc = acc;
+      }
+    }
+  #else
+    inline void reset() { acc = 0; }
+    inline void sample(const uint16_t s) { acc += s; }
+    inline void update() { raw = acc; }
+  #endif
 } temp_info_t;
 
 #if HAS_TEMP_REDUNDANT
@@ -271,6 +304,9 @@ struct HeaterWatch {
   }
 };
 
+#if ENABLED(ANKER_TEMP_WATCH)
+  typedef struct HeaterWatch<40, TEMP_HYSTERESIS, 60> anker_hotend_watch_t;
+#endif
 #if WATCH_HOTENDS
   typedef struct HeaterWatch<WATCH_TEMP_INCREASE, TEMP_HYSTERESIS, WATCH_TEMP_PERIOD> hotend_watch_t;
 #endif
@@ -355,19 +391,23 @@ class Temperature {
       static hotend_info_t temp_hotend[HOTENDS];
       static const celsius_t hotend_maxtemp[HOTENDS];
       static inline celsius_t hotend_max_target(const uint8_t e) { return hotend_maxtemp[e] - (HOTEND_OVERSHOOT); }
-      static uint32_t hotend_mintemp_err_cnt[HOTENDS];
-      static uint32_t hotend_maxtemp_err_cnt[HOTENDS];
+      static uint8_t hotend_minraw_err_cnt[HOTENDS];
+      static uint8_t hotend_maxraw_err_cnt[HOTENDS];
+      static uint8_t hotend_maxtemp_err_cnt[HOTENDS];
+      static uint8_t bed_minraw_err_cnt;
+      static uint8_t bed_maxraw_err_cnt;
+      static uint8_t bed_maxtemp_err_cnt;
     #endif
     #if ENABLED(ANKER_TEMP_WATCH)
-      int16_t temp_watch_error_flag;
-      static bool temp_watch_mos2_stop_flag;
-      static uint8_t temp_watch_mos2_self_test_flag;
-      static uint8_t temp_watch_mos2_deal_step;
-      celsius_float_t temp_watch_mos2_diff_temp;
+      int16_t temp_watch_error_flag = 0;
       static uint8_t hotend_mos2_temp_watch_deal_step;
       static uint8_t hotend_mos2_deal_enable_flag;
       static uint8_t bed_mos2_temp_watch_deal_step;
       static uint8_t bed_mos2_deal_enable_flag;
+      static uint8_t hotend_temp_shock_process_step;
+      static uint8_t bed_temp_shock_process_step;
+      static uint8_t hotend_temp_slide_window_process_step;
+      static uint8_t bed_temp_slide_window_process_step;
     #endif
     #if HAS_HEATED_BED
       static bed_info_t temp_bed;
@@ -473,6 +513,9 @@ class Temperature {
 
   private:
 
+    #if ENABLED(ANKER_TEMP_WATCH)
+      static anker_hotend_watch_t anker_watch_hotend[HOTENDS];
+    #endif
     #if ENABLED(WATCH_HOTENDS)
       static hotend_watch_t watch_hotend[HOTENDS];
     #endif
@@ -657,9 +700,6 @@ class Temperature {
     static void manage_heater() _O2; // Added _O2 to work around a compiler error
     #if ENABLED(ANKER_TEMP_WATCH)
     static bool temp_watch_is_error(void);
-    static void temp_watch_temp_error(void);
-    static bool temp_watch_is_mos2_self_test(void);
-    static void temp_watch_mos2_self_test_set(uint8_t state);
     #endif
     /**
      * Preheating hotends
@@ -713,6 +753,9 @@ class Temperature {
         TERN_(AUTO_POWER_CONTROL, if (celsius) powerManager.power_on());
         temp_hotend[ee].target = _MIN(celsius, hotend_max_target(ee));
         start_watching_hotend(ee);
+        #if ENABLED(ANKER_TEMP_WATCH)
+        anker_start_watching_hotend(ee);
+        #endif
       }
 
       static inline bool isHeatingHotend(const uint8_t E_NAME) {
@@ -748,6 +791,15 @@ class Temperature {
           watch_hotend[HOTEND_INDEX].restart(degHotend(HOTEND_INDEX), degTargetHotend(HOTEND_INDEX));
         #endif
       }
+      #if ENABLED(ANKER_TEMP_WATCH)
+      // Start watching a Hotend to make sure it's really heating up
+      static inline void anker_start_watching_hotend(const uint8_t E_NAME) {
+        UNUSED(HOTEND_INDEX);
+        #if WATCH_HOTENDS
+          anker_watch_hotend[HOTEND_INDEX].restart(degHotend(HOTEND_INDEX), degTargetHotend(HOTEND_INDEX));
+        #endif
+      }
+      #endif
 
     #endif // HAS_HOTEND
 
@@ -988,7 +1040,14 @@ class Temperature {
     static void _bed_temp_watch(void);
     static void _bed_mos2_temp_watch(void);
     static void _temp_watch(void);
-    static void _temp_watch_mos2_deal(void);
+    static void hotend_temp_heating_process(void);
+    static void bed_temp_heating_process(void);
+    static void hotend_temp_slide_window_process(void);
+    static void bed_temp_slide_window_process(void);
+    static void hotend_segmentation_heating_process(void);
+    static void hotend_temp_shock_process(void);
+    static void bed_temp_shock_process(void);
+    static void temp_protect_process(void);
     #endif
     static void _temp_error(const heater_id_t e, PGM_P const serial_msg, PGM_P const lcd_msg);
     static void min_temp_error(const heater_id_t e);
@@ -1020,9 +1079,10 @@ class Temperature {
         return (RunawayIndex)_MAX(heater_id, 0);
       }
 
-      enum TRState : char { TRInactive, TRFirstHeating, TRStable, TRRunaway };
+      enum TRState : char { TRInactive, TRFirstHeating, TRprestable, TRStable, TRRunaway };
 
       typedef struct {
+        uint32_t cnt = 0;
         millis_t timer = 0;
         TRState state = TRInactive;
         float running_temp;

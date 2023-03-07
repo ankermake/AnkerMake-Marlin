@@ -61,8 +61,13 @@
   #define HOMING_RISE_SPEED                 40*60     //mm/min
   // Z Probe (when not Z_MIN_PIN)
   #ifndef Z_MIN_PROBE_PIN
-       #define Z_MIN_PROBE_PIN                 PB0
+     #if MACCHINE == MOTOR_5X_DVT_USE_G_SENSOR
+      //#define Z_MIN_PROBE_PIN                  PD1
+     #else
+       #define Z_MIN_PROBE_PIN              PB0
+       #define Z_MIN_PROBE_STATE            HIGH
      #endif
+  #endif
 #else
   #define HOMING_RISE_SPEED                 40*60     //mm/min
   // Z Probe (when not Z_MIN_PIN)
@@ -121,8 +126,8 @@
   #ifndef ANKER_Z_HOMING_SCRIPT
    #define ANKER_Z_HOMING_SCRIPT "G1 X1 Y252 F7200\n"
   #endif
-  #define ANKER_HOMING_SCRIPT_ABSOLUTE  "G92 E0\nG1 X200 Y237 E10 F3000\nG1 X117.5 Y236.2 E15 F3000\nG1 E5 F3600\nG92 E0\n"
-  #define ANKER_HOMING_SCRIPT_NO_ABSOLUTE "G92 E0\nG1 X200 Y237 E10 F3000\nG1 X117.5 Y236.2 E5 F3000\nG1 E-10 F3600\nG92 E0\n"
+  #define ANKER_HOMING_SCRIPT_ABSOLUTE  "G92 E0\nG1 X130 Y237 F3000\nG1 E15 F3000\nG1 X225 Y237 E21 F3000\nG1 Z10 E11 F1200\nG1 E6 F3600\nG4 S10\nG1 Z0.2 F600\nG1 Y236 F1000\nG1 X140 Y236 F1000\nG92 E0\n"
+  #define ANKER_HOMING_SCRIPT_NO_ABSOLUTE "G92 E0\nG1 X130 Y237 F3000\nG1 E15 F3000\nG1 X225 Y237 E6 F3000\nG1 Z10 E-10 F1200\nG1 E-5 F3600\nG4 S10\nG1 Z0.2 F600\nG1 Y236 F1000\nG1 X140 Y236 F1000\nG92 E0\n"
   #define PROBE_HOMING_BUMP_MM      { 0, 0, 2 } 
 #endif
 
