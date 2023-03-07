@@ -2,7 +2,7 @@
  * @Author       : winter
  * @Date         : 2022-04-02 10:50:38
  * @LastEditors: winter.tian
- * @LastEditTime: 2022-12-02 09:50:05
+ * @LastEditTime: 2023-01-10 18:07:31
  * @Description  :
  */
 #include "../../inc/MarlinConfig.h"
@@ -19,6 +19,7 @@
 #define ANKER_PAUSE_CMD_STR "M2022"
 #define ANKER_CONTINUE_CMD_STR "M2023"
 #define ANKER_STOP_CMD_STR "M2024"
+#define ANKER_CLEAR_STOP_CMD_STR "M2025"
 
 enum anker_pause_status
 {
@@ -111,6 +112,7 @@ typedef struct
     void (*stop_start)(void);
     void (*stop_end)(void);
     void (*stop_deal)(void);
+    void (*clear_stop)(void);
 
 } anker_pause_info_t;
 

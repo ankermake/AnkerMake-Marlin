@@ -2,7 +2,7 @@
  * @Author       : winter
  * @Date         : 2022-04-02 10:50:23
  * @LastEditors: winter.tian
- * @LastEditTime: 2023-03-07 09:44:25
+ * @LastEditTime: 2023-03-07 10:11:48
  * @Description  :
  */
 #include "anker_pause.h"
@@ -419,6 +419,12 @@ static void anker_stop_deal(void)
     }
 }
 
+static void anker_clear_stop(void)
+{
+    queue.clear();
+    quickstop_stepper();
+}
+
 void anker_pause_init(void)
 {
     anker_pause_info_t *p_info = get_anker_pause_info();
@@ -432,6 +438,7 @@ void anker_pause_init(void)
     p_info->stop_start = anker_stop_start;
     p_info->stop_end = anker_stop_end;
     p_info->stop_deal = anker_stop_deal;
+    p_info->clear_stop = anker_clear_stop;
 }
 
 anker_pause_info_t *get_anker_pause_info(void)

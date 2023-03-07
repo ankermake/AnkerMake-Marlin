@@ -100,9 +100,9 @@ public:
 
     FORCE_INLINE static void report_z_axis_process(void) {
       if (report_layer) {        
-        char buf[64];
+        char buf[128];
         snprintf(buf,sizeof(buf), "\r\n\r\nz-upraise:%d,%ld,%.4f,%.4f,%.4f\r\n",report_layer, report_layer_num,
-        report_pos.a,report_pos.b,report_pos.c);
+        report_pos.a,report_pos.b, report_pos.c);
         SERIAL_ECHOPAIR(buf);
         report_layer = 0;
       }

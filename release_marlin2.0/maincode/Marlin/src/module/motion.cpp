@@ -1708,7 +1708,11 @@ void prepare_line_to_destination() {
         if (axis == Z_AXIS && final_approach) probe.set_probing_paused(false);
       #endif
 
-      endstops.validate_homing_move();
+      #if ENABLED(ANKER_VALIDATE_HOMING_ENDSTOPS)
+        endstops.anker_validate_homing_move(axis);
+      #else
+        endstops.validate_homing_move();
+      #endif
 
       // Re-enable stealthChop if used. Disable diag1 pin on driver.
       TERN_(SENSORLESS_HOMING, end_sensorless_homing_per_axis(axis, stealth_states));
@@ -1765,7 +1769,11 @@ void prepare_line_to_destination() {
         if (axis == Z_AXIS && final_approach) probe.set_probing_paused(false);
       #endif
 
-      endstops.validate_homing_move();
+      #if ENABLED(ANKER_VALIDATE_HOMING_ENDSTOPS)
+        endstops.anker_validate_homing_move(axis);
+      #else
+        endstops.validate_homing_move();
+      #endif
     }
     return no_trigge;
   }
@@ -2055,6 +2063,7 @@ void prepare_line_to_destination() {
     if(is_z_top_triger)
     {
       is_z_rise=false;
+      MYSERIAL2.printf("Error:Homing Error Z_AXIS\r\n");
       kill(GET_TEXT(MSG_KILL_HOMING_FAILED));
       //homeaxis(Z_AXIS);
     }

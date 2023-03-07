@@ -729,7 +729,8 @@ void GcodeSuite::G28() {
         anker_homing.is_angan_homing_z_num++;
         if(anker_homing.is_angan_homing_z_num>=ANKER_Z_AGAIN_HOMING_NUM)  
         {
-         kill(GET_TEXT(MSG_KILL_HOMING_FAILED));
+          MYSERIAL2.printf("Error:Homing Error Z_AXIS\r\n");
+          kill(GET_TEXT(MSG_KILL_HOMING_FAILED));
         }
         gcode.process_subcommands_now_P(PSTR("G28 Z\n"));
       }

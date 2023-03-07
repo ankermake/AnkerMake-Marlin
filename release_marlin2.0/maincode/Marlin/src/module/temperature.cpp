@@ -294,6 +294,10 @@ const char str_t_thermal_runaway[] PROGMEM = STR_T_THERMAL_RUNAWAY,
   uint8_t Temperature::temp_watch_mos2_self_test_flag = 0;
   uint8_t Temperature::temp_watch_mos2_deal_step = 0;
   celsius_float_t temp_watch_mos2_diff_temp = 0.0;
+  uint8_t Temperature::hotend_mos2_temp_watch_deal_step = 0;
+  uint8_t Temperature::hotend_mos2_deal_enable_flag = 0;
+  uint8_t Temperature::bed_mos2_temp_watch_deal_step = 0;
+  uint8_t Temperature::bed_mos2_deal_enable_flag = 0;
 #endif
 
 #if HAS_TEMP_REDUNDANT
@@ -982,7 +986,7 @@ inline void loud_kill(PGM_P const lcd_msg, const heater_id_t heater_id) {
 #define TEMP_WATCH_ERROR 0x5A00
 bool Temperature::temp_watch_is_error(void)
 {
-  return (thermalManager.temp_watch_error_flag == TEMP_WATCH_ERROR);
+  return ((thermalManager.temp_watch_error_flag & 0xff00) == TEMP_WATCH_ERROR);
 }
 void Temperature::temp_watch_temp_error(void)
 {
@@ -1015,7 +1019,7 @@ void Temperature::_hotend_temp_watch(void)
             start = true;
           }
           err_count++;
-          MYSERIAL2.printf("err_count: %d, cur_temp: %f, target_temp: %f, base_temp: %f\r\n", err_count, cur_temp, target_temp, base_temp);
+          MYSERIAL2.printf("hotend: err_count: %d, cur_temp: %f, target_temp: %f, base_temp: %f\r\n", err_count, cur_temp, target_temp, base_temp);
       }
       else 
       {
@@ -1031,10 +1035,69 @@ void Temperature::_hotend_temp_watch(void)
 
   if (err_count > 15 && (cur_temp >= base_temp + 30 && cur_temp < 270))
   {
-    thermalManager.temp_watch_error_flag = TEMP_WATCH_ERROR;
-    settings.save();
-    _delay_ms(100);
-    MYSERIAL2.printf("Error:Demage hotend temp watch\r\n");
+    thermalManager.temp_watch_error_flag |= TEMP_WATCH_ERROR;
+    // thermalManager.temp_watch_error_flag |= 0x0001;
+    // settings.save();
+    // _delay_ms(100);
+    // MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
+    hotend_mos2_deal_enable_flag = 1;
+  }
+}
+void Temperature::_hotend_mos2_temp_watch(void)
+{
+  static int time_count = 0;
+  static celsius_float_t base_temp = 0.0;
+  celsius_float_t cur_temp =0;
+  static uint8_t save_flag = 0;
+
+  switch(hotend_mos2_temp_watch_deal_step)
+  {
+    case 0:
+    {
+      if(hotend_mos2_deal_enable_flag == 1)
+      {
+        hotend_mos2_deal_enable_flag = 0;
+        base_temp = degHotend(0);
+        cur_temp = base_temp;
+        time_count = 0;
+        save_flag = 0;
+        hotend_mos2_temp_watch_deal_step++;
+        MYSERIAL2.printf("hotend: base_temp=%f, cur_temp=%f\r\n", base_temp, cur_temp);
+      }
+      break;
+    }
+    case 1:
+    {
+      cur_temp = degHotend(0);
+      MYSERIAL2.printf("hotend: time_count=%d, cur_temp=%f\r\n", time_count, cur_temp);
+      time_count++;
+      if(time_count >= 20)
+      {
+        time_count = 15;
+        if((cur_temp > base_temp + 30) && cur_temp <= HEATER_0_MAXTEMP)
+        {
+          thermalManager.temp_watch_error_flag |= 0x0002;
+          MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
+        }
+        else
+        {
+          thermalManager.temp_watch_error_flag |= 0x0001;
+          MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
+        }
+        if(save_flag == 0)
+        {
+          save_flag = 1;
+          settings.save();
+          _delay_ms(100);
+        }
+      }
+      break;
+    }
+    default:
+    {
+      hotend_mos2_temp_watch_deal_step = 0;
+      break;
+    }
   }
 }
 void Temperature::_bed_temp_watch(void)
@@ -1055,6 +1118,7 @@ void Temperature::_bed_temp_watch(void)
             start = true;
           }
           err_count++;
+          MYSERIAL2.printf("bed: err_count: %d, cur_temp: %f, target_temp: %f, base_temp: %f\r\n", err_count, cur_temp, target_temp, base_temp);
       }
       else 
       {
@@ -1068,12 +1132,71 @@ void Temperature::_bed_temp_watch(void)
     start     = 0;
   }
 
-  if (err_count > 15  && (cur_temp >= base_temp + 10 && cur_temp < 105)) 
+  if (err_count > 15  && (cur_temp >= base_temp + 10 && cur_temp < BED_MAXTEMP)) 
   {
-    thermalManager.temp_watch_error_flag = TEMP_WATCH_ERROR;
-    settings.save();
-    _delay_ms(100);
-    MYSERIAL2.printf("Error:Demage bed temp watch\r\n");
+    thermalManager.temp_watch_error_flag |= TEMP_WATCH_ERROR;
+    // thermalManager.temp_watch_error_flag |= 0x0010;
+    // settings.save();
+    // _delay_ms(100);
+    // MYSERIAL2.printf("Error:Demage:1 bed\r\n");
+    bed_mos2_deal_enable_flag = 1;
+  }
+}
+void Temperature::_bed_mos2_temp_watch(void)
+{
+  static int time_count = 0;
+  static celsius_float_t base_temp = 0.0;
+  celsius_float_t cur_temp =0;
+  static uint8_t save_flag = 0;
+
+  switch(bed_mos2_temp_watch_deal_step)
+  {
+    case 0:
+    {
+      if(bed_mos2_deal_enable_flag == 1)
+      {
+        bed_mos2_deal_enable_flag = 0;
+        base_temp = degBed();
+        cur_temp = base_temp;
+        time_count = 0;
+        save_flag = 0;
+        bed_mos2_temp_watch_deal_step++;
+        MYSERIAL2.printf("bed: base_temp=%f, cur_temp=%f\r\n", base_temp, cur_temp);
+      }
+      break;
+    }
+    case 1:
+    {
+      cur_temp = degBed();
+      MYSERIAL2.printf("bed: time_count=%d, cur_temp=%f\r\n", time_count, cur_temp);
+      time_count++;
+      if(time_count >= 30)
+      {
+        time_count = 25;
+        if((cur_temp > base_temp + 3) && cur_temp <= BED_MAXTEMP)
+        {
+          thermalManager.temp_watch_error_flag |= 0x0020;
+          MYSERIAL2.printf("Error:Demage:2 bed\r\n");
+        }
+        else
+        {
+          thermalManager.temp_watch_error_flag |= 0x0010;
+          MYSERIAL2.printf("Error:Demage:1 bed\r\n");
+        }
+        if(save_flag == 0)
+        {
+          save_flag = 1;
+          settings.save();
+          _delay_ms(100);
+        }
+      }
+      break;
+    }
+    default:
+    {
+      bed_mos2_temp_watch_deal_step = 0;
+      break;
+    }
   }
 }
 void Temperature::_temp_watch(void)
@@ -1081,24 +1204,35 @@ void Temperature::_temp_watch(void)
   static uint8_t report_time_count = 0;
   static uint8_t report_count = 0;
   static millis_t timeout = millis();
+  static uint8_t heater_bed_ctrl2_enable = 0;
+
   if((millis() - timeout) > 1000)
   {
     timeout = millis();
-    if(thermalManager.temp_watch_error_flag == TEMP_WATCH_ERROR)
+    if(temp_watch_is_error() == true)
     {
-      setTargetHotend(0, 0);
-      setTargetBed(0);
-      WRITE_HEATER_0(LOW);
-      WRITE_HEATER_BED(LOW);
+      disable_all_heaters();
+      #if PIN_EXISTS(HEATER_BED_CTRL_2)
+        OUT_WRITE(HEATER_BED_CTRL_2_PIN, !HEATER_BED_CTRL_2_INVERTING);
+      #endif
+      heater_bed_ctrl2_enable = 0;
       get_anker_nozzle_board_info()->power_off();
       report_time_count++;
       if(report_time_count >= 5)
       {
         report_time_count = 0;
-        if(report_count < 5)
+        if(report_count < 10)
         {
           report_count++;
-          MYSERIAL2.printf("Error:Demage temp watch\r\n");
+          
+          if(thermalManager.temp_watch_error_flag & 0x0002)
+            MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
+          else if(thermalManager.temp_watch_error_flag & 0x0001)
+            MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
+          if(thermalManager.temp_watch_error_flag & 0x0020)
+            MYSERIAL2.printf("Error:Demage:2 bed\r\n");
+          else if(thermalManager.temp_watch_error_flag & 0x0010)
+            MYSERIAL2.printf("Error:Demage:1 bed\r\n");
         }
         else
         {
@@ -1112,9 +1246,18 @@ void Temperature::_temp_watch(void)
            }
         }
       }
+      _hotend_mos2_temp_watch();
+      _bed_mos2_temp_watch();
     }
     else
     {
+      #if PIN_EXISTS(HEATER_BED_CTRL_2)
+        if(heater_bed_ctrl2_enable == 0)
+        {
+          OUT_WRITE(HEATER_BED_CTRL_2_PIN, HEATER_BED_CTRL_2_INVERTING);
+          heater_bed_ctrl2_enable = 1;
+        }
+      #endif
       if(!temp_watch_is_mos2_self_test())
       {
        _hotend_temp_watch();
@@ -1122,6 +1265,8 @@ void Temperature::_temp_watch(void)
       }
       report_time_count = 0;
       report_count = 0;
+      hotend_mos2_temp_watch_deal_step = 0;
+      bed_mos2_temp_watch_deal_step = 0;
     }
   }
 }
@@ -1599,6 +1744,7 @@ void Temperature::manage_heater() {
             start_watching_hotend(e);               // If temp reached, turn off elapsed check
           else {
             TERN_(DWIN_CREALITY_LCD, DWIN_Popup_Temperature(0));
+            TERN_(ANKERUI,ankerUI.gui_heat_failed_show());
             _temp_error((heater_id_t)e, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
           }
         }
@@ -1645,6 +1791,7 @@ void Temperature::manage_heater() {
           start_watching_bed();                 // If temp reached, turn off elapsed check
         else {
           TERN_(DWIN_CREALITY_LCD, DWIN_Popup_Temperature(0));
+          TERN_(AnkerUI,ankerUI.gui_heat_failed_show());
           _temp_error(H_BED, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
         }
       }

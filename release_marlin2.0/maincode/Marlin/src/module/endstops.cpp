@@ -400,6 +400,34 @@ void Endstops::not_homing() {
   }
 #endif
 
+#if ENABLED(ANKER_VALIDATE_HOMING_ENDSTOPS)
+  void Endstops::anker_validate_homing_move(const AxisEnum axis)
+  {
+    if (trigger_state()) 
+    {
+      hit_on_purpose();
+    }
+    else
+    {
+      switch(axis)
+      {
+        case X_AXIS:
+          MYSERIAL2.printf("Error:Homing Error X_AXIS\r\n");
+          break;
+        case Y_AXIS:
+          MYSERIAL2.printf("Error:Homing Error Y_AXIS\r\n");
+          break;
+        case Z_AXIS:
+          MYSERIAL2.printf("Error:Homing Error Z_AXIS\r\n");
+          break;
+        default:
+          break;
+      }
+      kill(GET_TEXT(MSG_KILL_HOMING_FAILED));
+    }
+  }
+#endif
+
 // Enable / disable endstop z-probe checking
 #if HAS_BED_PROBE
   void Endstops::enable_z_probe(const bool onoff) {

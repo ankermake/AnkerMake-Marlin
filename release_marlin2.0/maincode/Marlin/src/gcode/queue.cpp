@@ -445,6 +445,10 @@ static bool ak_gcode_parse(char *command)
           get_anker_pause_info()->stop_start();
           SERIAL_ECHOLN(STR_OK);
           return true;
+        case 2025: //clear & stop
+          get_anker_pause_info()->clear_stop();
+          SERIAL_ECHOLN(STR_OK);
+          return true;
     case 205:
     case 204:
     case 900:
@@ -666,7 +670,7 @@ bool GCodeQueue::multi_pack_recv(int c, int p)
   #define IS_UARTX 1
   if (p != IS_UARTX) //only responce uart1 from junzheng
     return false;
-  if (state > 0 && millis() - timeout > 180) {  
+  if (state > 0 && millis() - timeout > 200) {  
     SERIAL_ECHO("Multi pack recv timeout\r\n");
     SERIAL_ECHO("Request retry\r\n");
     state = 0;
