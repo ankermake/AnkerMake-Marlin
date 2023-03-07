@@ -2,12 +2,13 @@
  * @Author       : winter
  * @Date         : 2022-05-12 20:30:21
  * @LastEditors: winter.tian
- * @LastEditTime: 2022-11-30 18:51:50
+ * @LastEditTime: 2022-12-16 12:02:56
  * @Description  :
  */
 #include "anker_nozzle_board.h"
 #include "../../gcode/gcode.h"
 #include "../../module/planner.h"
+#include "../../module/temperature.h"
 
 #if ENABLED(ANKER_MAKE_API)
 
@@ -45,6 +46,19 @@ static unsigned char crc8(unsigned char *pdat, unsigned int len)
     return crc;
 }
 
+static void anker_nozzle_board_power_off(void)
+{
+    anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
+    p_info->tx_init_flag = 0;
+    p_info->tx_deal_step = 0;
+    p_info->heartbeat_deal_step = 0;
+#ifdef NOZZLE_BOARD_PWR_PIN
+    OUT_WRITE(NOZZLE_BOARD_PWR_PIN, !NOZZLE_BOARD_PWR_STATE);
+#endif
+#if ENABLED(PROVE_CONTROL)
+    OUT_WRITE(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+#endif
+}
 static void anker_nozzle_board_power_reset(void)
 {
     anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
@@ -172,6 +186,31 @@ static void anker_nozzle_board_heartbeat_deal(void)
         p_info->heartbeat_deal_step = 0;
     }
 }
+static void anker_nozzle_board_tx_error_deal(void)
+{
+    anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
+    static millis_t tx_error_timeout = millis() + 10000UL;
+    static uint8_t tmp_abnormal_flag = 0;
+
+    if (p_info->com_abnormal_flag == 1)
+    {
+        if (!PENDING(millis(), tx_error_timeout))
+        {
+            tmp_abnormal_flag = 1;
+            SERIAL_ECHOPAIR("echo:M3005,", p_info->com_abnormal_flag, "\r\n");
+            tx_error_timeout = millis() + 10000UL;
+        }
+    }
+    else
+    {
+        if (tmp_abnormal_flag == 1)
+        {
+            tmp_abnormal_flag = 0;
+            SERIAL_ECHOPAIR("echo:M3005,", p_info->com_abnormal_flag, "\r\n");
+        }
+        tx_error_timeout = millis() + 10000UL;
+    }
+}
 static uint8_t anker_nozzle_board_tx_cmd_ring_buf_available(void)
 {
     anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
@@ -282,16 +321,11 @@ static void anker_nozzle_board_tx_deal(void)
 {
     anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
     char tmp_buf[ANKER_NOZZLE_BOARD_TX_BUF_SIZE] = {0};
-    static uint8_t tmp_com_abnormal_pre_flag = 0;
     static millis_t tmp_timeout = 0;
     static uint8_t tmp_tx_retry_count = 0;
     static uint8_t add_cmd_fail_count = 0;
 
-    if (tmp_com_abnormal_pre_flag != p_info->com_abnormal_flag)
-    {
-        tmp_com_abnormal_pre_flag = p_info->com_abnormal_flag;
-        // SERIAL_ECHOPAIR("echo:M3006,", p_info->com_abnormal_flag, "\r\n");
-    }
+    anker_nozzle_board_tx_error_deal();
 
     switch (p_info->tx_deal_step)
     {
@@ -299,12 +333,14 @@ static void anker_nozzle_board_tx_deal(void)
     {
         if (p_info->tx_init_flag == 0)
         {
+            memset(p_info->tx_buf, 0, sizeof(p_info->tx_buf));
+            memset(&p_info->tx_cmd_ring_buf, 0, sizeof(p_info->tx_cmd_ring_buf));
             memset(tmp_buf, 0, sizeof(tmp_buf));
             snprintf(tmp_buf, sizeof(tmp_buf), "M3003 %d", p_info->threshold);
             if (p_info->tx_ring_buf_add(tmp_buf) == 0)
             {
                 p_info->power_reset();
-                // p_info->tx_deal_step++;
+                p_info->serial_begin();
                 add_cmd_fail_count = 0;
                 p_info->tx_deal_step = 3;
             }
@@ -425,6 +461,7 @@ static void anker_nozzle_board_tx_deal(void)
             memset(p_info->tx_buf, 0, sizeof(p_info->tx_buf));
             p_info->com_abnormal_flag = 0;
             p_info->tx_deal_step = 10;
+            thermalManager.temp_watch_mos2_stop_flag = false;
         }
         else
         {
@@ -447,11 +484,10 @@ static void anker_nozzle_board_tx_deal(void)
             p_info->tx_state = TX_ERROR_STATE;
             p_info->tx_error_times++;
             p_info->com_abnormal_flag = 1;
-            memset(p_info->tx_buf, 0, sizeof(p_info->tx_buf));
             p_info->tx_init_flag = 0;
             p_info->tx_deal_step = 0;
-            memset(&p_info->tx_cmd_ring_buf, 0, sizeof(p_info->tx_cmd_ring_buf));
-            debug_log_printf("[nozzle-%d]:step %d TX_ERROR_TIMES: %d\r\n", __LINE__, p_info->tx_deal_step, p_info->tx_error_times);
+            thermalManager.temp_watch_mos2_stop_flag = true;
+            debug_log_printf("[nozzle-%d]:TX_ERROR_TIMES: %d\r\n", __LINE__, p_info->tx_error_times);
         }
         else
         {
@@ -773,6 +809,13 @@ static void anker_nozzle_board_deal(void)
 {
     anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
 
+#if ENABLED(ANKER_TEMP_WATCH)
+    if (thermalManager.temp_watch_is_error() || thermalManager.temp_watch_is_mos2_self_test())
+    {
+        p_info->power_off();
+        return;
+    }
+#endif
     p_info->rx_deal();
     p_info->tx_deal();
     p_info->heartbeat_deal();
@@ -789,6 +832,7 @@ void anker_nozzle_board_init(void)
 {
     anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
 
+    p_info->power_off = anker_nozzle_board_power_off;
     p_info->power_reset = anker_nozzle_board_power_reset;
     p_info->serial_begin = anker_nozzle_board_serial_begin;
     p_info->serial_end = anker_nozzle_board_serial_end;
@@ -803,6 +847,9 @@ void anker_nozzle_board_init(void)
     p_info->nozzle_board_deal = anker_nozzle_board_deal;
 
     p_info->serial_begin();
+    p_info->tx_init_flag = 0;
+    p_info->tx_deal_step = 0;
+    p_info->heartbeat_deal_step = 0;
 }
 
 void set_anker_z_sensorless_probe_value(int value)

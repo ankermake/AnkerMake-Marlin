@@ -358,6 +358,13 @@ class Temperature {
       static uint32_t hotend_mintemp_err_cnt[HOTENDS];
       static uint32_t hotend_maxtemp_err_cnt[HOTENDS];
     #endif
+    #if ENABLED(ANKER_TEMP_WATCH)
+      int16_t temp_watch_error_flag;
+      static bool temp_watch_mos2_stop_flag;
+      static uint8_t temp_watch_mos2_self_test_flag;
+      static uint8_t temp_watch_mos2_deal_step;
+      celsius_float_t temp_watch_mos2_diff_temp;
+    #endif
     #if HAS_HEATED_BED
       static bed_info_t temp_bed;
     #endif
@@ -644,7 +651,12 @@ class Temperature {
      * Call periodically to manage heaters
      */
     static void manage_heater() _O2; // Added _O2 to work around a compiler error
-
+    #if ENABLED(ANKER_TEMP_WATCH)
+    static bool temp_watch_is_error(void);
+    static void temp_watch_temp_error(void);
+    static bool temp_watch_is_mos2_self_test(void);
+    static void temp_watch_mos2_self_test_set(uint8_t state);
+    #endif
     /**
      * Preheating hotends
      */
@@ -966,6 +978,12 @@ class Temperature {
       static float get_pid_output_chamber();
     #endif
 
+    #if ENABLED(ANKER_TEMP_WATCH)
+    static void _hotend_temp_watch(void);
+    static void _bed_temp_watch(void);
+    static void _temp_watch(void);
+    static void _temp_watch_mos2_deal(void);
+    #endif
     static void _temp_error(const heater_id_t e, PGM_P const serial_msg, PGM_P const lcd_msg);
     static void min_temp_error(const heater_id_t e);
     static void max_temp_error(const heater_id_t e);

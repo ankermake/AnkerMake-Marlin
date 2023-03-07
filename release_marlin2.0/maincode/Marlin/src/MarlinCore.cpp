@@ -951,6 +951,10 @@ void idle(bool no_stepper_sleep/*=false*/) {
  */
 void kill(PGM_P const lcd_error/*=nullptr*/, PGM_P const lcd_component/*=nullptr*/, const bool steppers_off/*=false*/) {
   thermalManager.disable_all_heaters();
+  
+  #if ENABLED(ANKER_NOZZLE_BOARD)
+    get_anker_nozzle_board_info()->power_off();
+  #endif
 
   TERN_(HAS_CUTTER, cutter.kill()); // Full cutter shutdown including ISR control
 
@@ -966,10 +970,6 @@ void kill(PGM_P const lcd_error/*=nullptr*/, PGM_P const lcd_component/*=nullptr
   TERN_(HAS_TFT_LVGL_UI, lv_draw_error_message(lcd_error));
 
   TERN_(ANKER_MAKE_API,SERIAL_ECHOLN(lcd_error));
-   
-  #ifdef NOZZLE_BOARD_PWR_PIN
-    OUT_WRITE(NOZZLE_BOARD_PWR_PIN, !NOZZLE_BOARD_PWR_STATE);
-  #endif
 
   // "Error:Printer halted. kill() called!"
   SERIAL_ERROR_MSG(STR_ERR_KILLED);

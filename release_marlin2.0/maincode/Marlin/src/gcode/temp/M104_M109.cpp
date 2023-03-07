@@ -77,6 +77,13 @@ void GcodeSuite::M104_M109(const bool isM109) {
 
   if (DEBUGGING(DRYRUN)) return;
 
+  #if ENABLED(ANKER_TEMP_WATCH)
+    if(thermalManager.temp_watch_is_error())
+    {
+      return;
+    }
+  #endif
+
   #if ENABLED(MIXING_EXTRUDER) && MIXING_VIRTUAL_TOOLS > 1
     constexpr int8_t target_extruder = 0;
   #else

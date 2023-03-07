@@ -1199,6 +1199,9 @@ private:
         static void M3005();
         static void M3009();
       #endif
+      #if ENABLED(ANKER_TEMP_WATCH)
+        static void M3008();
+      #endif
   #endif
 
   static void T(const int8_t tool_index);

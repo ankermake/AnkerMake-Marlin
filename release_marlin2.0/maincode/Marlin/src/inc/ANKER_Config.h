@@ -47,7 +47,7 @@
 /*******************************Functional API Configuration****************************/
 #if MACCHINE == MOTOR_5X_DVT
     #ifndef SHORT_BUILD_VERSION
-     #define SHORT_BUILD_VERSION            "V8111_V2.0.41"
+     #define SHORT_BUILD_VERSION            "V8111_V2.0.42"
     #endif
     #define ANKER_MAKE_API           1 //gcode
     #define ANKER_GCODE_CHECK        0
@@ -84,7 +84,8 @@
     #define TMC_AUTO_CONFIG          0// Enable TMC2209 silent mode auto-configuration function
     #define ANKER_NOZZLE_PROBE_OFFSET 1 //
     #define ANKER_PRINT_SLOWDOWN     0 //this is for the machine to prevent to print slowdown 
-    #define ANKER_LIN_PARAMETER      1 //this is for lin_advance 
+    #define ANKER_LIN_PARAMETER      1 //this is for lin_advance
+    #define ANKER_TEMP_WATCH         1
 #endif
 
 /*******************************Error detection****************************/

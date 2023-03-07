@@ -59,6 +59,13 @@ void GcodeSuite::M140_M190(const bool isM190) {
 
   if (DEBUGGING(DRYRUN)) return;
 
+  #if ENABLED(ANKER_TEMP_WATCH)
+    if(thermalManager.temp_watch_is_error())
+    {
+      return;
+    }
+  #endif
+
   bool got_temp = false;
   celsius_t temp = 0;
 

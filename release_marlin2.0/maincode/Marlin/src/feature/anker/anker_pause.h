@@ -1,8 +1,8 @@
 /*
  * @Author       : winter
  * @Date         : 2022-04-02 10:50:38
- * @LastEditors  : winter
- * @LastEditTime : 2022-05-20 14:01:53
+ * @LastEditors: winter.tian
+ * @LastEditTime: 2022-12-02 09:50:05
  * @Description  :
  */
 #include "../../inc/MarlinConfig.h"
@@ -90,7 +90,7 @@ typedef struct
     int pause_queue_state;
     int pause_block_state;
     int pause_deal_step;
-    char tmp_cmd_buf[64];
+    char tmp_cmd_buf[256];
     uint8_t tmp_block_tail;
     uint8_t tmp_block_length;
 

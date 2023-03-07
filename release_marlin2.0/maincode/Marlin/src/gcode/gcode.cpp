@@ -1121,6 +1121,9 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
             case 3005: M3005(); break;
             case 3009: M3009(); break;
           #endif
+          #if ENABLED(ANKER_TEMP_WATCH)
+            case 3008: M3008(); break;
+          #endif
           #if ENABLED(EVT_HOMING_5X)
             case 89: M89(); break;  
             case 2004:M2004(); break;

@@ -2,7 +2,7 @@
  * @Author       : winter
  * @Date         : 2022-04-02 10:50:23
  * @LastEditors: winter.tian
- * @LastEditTime: 2023-03-06 20:38:22
+ * @LastEditTime: 2023-03-07 09:44:25
  * @Description  :
  */
 #include "anker_pause.h"
@@ -187,10 +187,10 @@ static void anker_pause_deal(void)
             memcpy(&(p_info->save_block_buf), &(p_info->cur_block_buf), sizeof(anker_block_buffer_t));
 
             memset(p_info->tmp_cmd_buf, 0, sizeof(p_info->tmp_cmd_buf));
-            sprintf(p_info->tmp_cmd_buf, "<== %d ==> : block_length = %d\r\n", __LINE__, p_info->save_block_buf.block_length);
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "<== %d ==> : block_length = %d\r\n", __LINE__, p_info->save_block_buf.block_length);
             MYSERIAL1.printf(p_info->tmp_cmd_buf);
             memset(p_info->tmp_cmd_buf, 0, sizeof(p_info->tmp_cmd_buf));
-            sprintf(p_info->tmp_cmd_buf, "<== %d ==> : x = %f y = %f z = %f e = %f fr = %f\r\n", __LINE__,
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "<== %d ==> : x = %f y = %f z = %f e = %f fr = %f\r\n", __LINE__,
                     p_info->save_block_buf.cur_pos.x,
                     p_info->save_block_buf.cur_pos.y,
                     p_info->save_block_buf.cur_pos.z,

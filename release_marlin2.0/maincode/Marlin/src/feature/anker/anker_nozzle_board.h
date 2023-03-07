@@ -1,8 +1,8 @@
 /*
  * @Author       : winter
  * @Date         : 2022-05-12 20:32:54
- * @LastEditors: winter.tian winter.tian@anker-in.com
- * @LastEditTime: 2022-09-16 16:57:38
+ * @LastEditors: winter.tian
+ * @LastEditTime: 2022-12-03 20:35:08
  * @Description  :
  */
 #include "../../inc/MarlinConfig.h"
@@ -90,6 +90,7 @@ typedef struct
   uint8_t heartbeat_abnormal_flag;
   uint8_t heartbeat_deal_step;
 
+  void (*power_off)(void);
   void (*power_reset)(void);
   void (*serial_begin)(void);
   void (*serial_end)(void);

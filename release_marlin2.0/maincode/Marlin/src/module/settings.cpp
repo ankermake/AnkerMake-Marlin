@@ -1046,9 +1046,12 @@ void MarlinSettings::postprocess() {
     // LCD Contrast
     //
     {
-      _FIELD_TEST(lcd_contrast);
-      const int16_t lcd_contrast = TERN(HAS_LCD_CONTRAST, ui.contrast, 127);
-      EEPROM_WRITE(lcd_contrast);
+      // _FIELD_TEST(lcd_contrast);
+      // const int16_t lcd_contrast = TERN(HAS_LCD_CONTRAST, ui.contrast, 127);
+      // EEPROM_WRITE(lcd_contrast);
+      #if ENABLED(ANKER_TEMP_WATCH)
+        EEPROM_WRITE(thermalManager.temp_watch_error_flag);
+      #endif
     }
 
     //
@@ -1920,12 +1923,15 @@ void MarlinSettings::postprocess() {
       // LCD Contrast
       //
       {
-        _FIELD_TEST(lcd_contrast);
-        int16_t lcd_contrast;
-        EEPROM_READ(lcd_contrast);
-        if (!validating) {
-          TERN_(HAS_LCD_CONTRAST, ui.set_contrast(lcd_contrast));
-        }
+        // _FIELD_TEST(lcd_contrast);
+        // int16_t lcd_contrast;
+        // EEPROM_READ(lcd_contrast);
+        // if (!validating) {
+        //   TERN_(HAS_LCD_CONTRAST, ui.set_contrast(lcd_contrast));
+        // }
+        #if ENABLED(ANKER_TEMP_WATCH)
+          EEPROM_READ(thermalManager.temp_watch_error_flag);
+        #endif
       }
 
       //
@@ -2958,7 +2964,10 @@ void MarlinSettings::reset() {
   //
   // LCD Contrast
   //
-  TERN_(HAS_LCD_CONTRAST, ui.set_contrast(DEFAULT_LCD_CONTRAST));
+  // TERN_(HAS_LCD_CONTRAST, ui.set_contrast(DEFAULT_LCD_CONTRAST));
+  #if ENABLED(ANKER_TEMP_WATCH)
+    thermalManager.temp_watch_error_flag = 0;
+  #endif
 
   //
   // LCD Brightness

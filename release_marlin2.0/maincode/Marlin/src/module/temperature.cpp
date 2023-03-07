@@ -57,6 +57,13 @@
   #include "../feature/host_actions.h"
 #endif
 
+#if ENABLED(ANKER_TEMP_WATCH)
+  #include "settings.h"
+#if ENABLED(ANKER_NOZZLE_BOARD)
+  #include "../feature/anker/anker_nozzle_board.h"
+#endif
+#endif
+
 // MAX TC related macros
 #define TEMP_SENSOR_IS_MAX(n, M) (ENABLED(TEMP_SENSOR_##n##_IS_MAX##M) || (ENABLED(TEMP_SENSOR_REDUNDANT_IS_MAX##M) && REDUNDANT_TEMP_MATCH(SOURCE, E##n)))
 #define TEMP_SENSOR_IS_ANY_MAX_TC(n) (ENABLED(TEMP_SENSOR_##n##_IS_MAX_TC) || (ENABLED(TEMP_SENSOR_REDUNDANT_IS_MAX_TC) && REDUNDANT_TEMP_MATCH(SOURCE, E##n)))
@@ -280,6 +287,13 @@ const char str_t_thermal_runaway[] PROGMEM = STR_T_THERMAL_RUNAWAY,
   const celsius_t Temperature::hotend_maxtemp[HOTENDS] = ARRAY_BY_HOTENDS(HEATER_0_MAXTEMP, HEATER_1_MAXTEMP, HEATER_2_MAXTEMP, HEATER_3_MAXTEMP, HEATER_4_MAXTEMP, HEATER_5_MAXTEMP, HEATER_6_MAXTEMP, HEATER_7_MAXTEMP);
   uint32_t Temperature::hotend_mintemp_err_cnt[HOTENDS];
   uint32_t Temperature::hotend_maxtemp_err_cnt[HOTENDS];
+#endif
+
+#if ENABLED(ANKER_TEMP_WATCH)
+  bool Temperature::temp_watch_mos2_stop_flag = false;
+  uint8_t Temperature::temp_watch_mos2_self_test_flag = 0;
+  uint8_t Temperature::temp_watch_mos2_deal_step = 0;
+  celsius_float_t temp_watch_mos2_diff_temp = 0.0;
 #endif
 
 #if HAS_TEMP_REDUNDANT
@@ -712,6 +726,10 @@ volatile bool Temperature::raw_temps_ready = false;
         #endif
         next_temp_ms = ms + 2000UL;
 
+        #if ENABLED(ANKER_TEMP_WATCH)
+        if(!temp_watch_is_mos2_self_test())
+        {
+        #endif
         // Make sure heating is actually working
         #if WATCH_PID
           if (BOTH(WATCH_BED, WATCH_HOTENDS) || isbed == DISABLED(WATCH_HOTENDS) || ischamber == DISABLED(WATCH_HOTENDS)) {
@@ -727,6 +745,9 @@ volatile bool Temperature::raw_temps_ready = false;
             else if (current_temp < target - (MAX_OVERSHOOT_PID_AUTOTUNE)) // Heated, then temperature fell too far?
               _temp_error(heater_id, str_t_thermal_runaway, GET_TEXT(MSG_THERMAL_RUNAWAY));
           }
+        #endif
+        #if ENABLED(ANKER_TEMP_WATCH)
+        }
         #endif
       } // every 2 seconds
 
@@ -957,7 +978,233 @@ inline void loud_kill(PGM_P const lcd_msg, const heater_id_t heater_id) {
   #endif
   kill(lcd_msg, HEATER_PSTR(heater_id));
 }
+#if ENABLED(ANKER_TEMP_WATCH)
+#define TEMP_WATCH_ERROR 0x5A00
+bool Temperature::temp_watch_is_error(void)
+{
+  return (thermalManager.temp_watch_error_flag == TEMP_WATCH_ERROR);
+}
+void Temperature::temp_watch_temp_error(void)
+{
+  _temp_error((heater_id_t)0, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
+}
+bool Temperature::temp_watch_is_mos2_self_test(void)
+{
+  return !!thermalManager.temp_watch_mos2_self_test_flag;
+}
+void Temperature::temp_watch_mos2_self_test_set(uint8_t state)
+{
+    thermalManager.temp_watch_mos2_self_test_flag = state;
+}
+void Temperature::_hotend_temp_watch(void)
+{
+  static int err_count = 0;  
+  static bool start = 0;
+  static celsius_float_t base_temp = 0.0;
+  celsius_float_t cur_temp =0, target_temp = 0;
+  cur_temp = degHotend(0);
+  target_temp = degTargetHotend(0);
+ 
+  if ((cur_temp > 80 && cur_temp > target_temp + 30) && (target_temp < 30))
+  {
+      if (cur_temp >= base_temp + 3)
+      {
+          if ((!start))
+          {
+            base_temp = cur_temp ;
+            start = true;
+          }
+          err_count++;
+          MYSERIAL2.printf("err_count: %d, cur_temp: %f, target_temp: %f, base_temp: %f\r\n", err_count, cur_temp, target_temp, base_temp);
+      }
+      else 
+      {
+        err_count = 0;
+      }
+  }
+  else
+  {
+    err_count = 0;
+    base_temp = 0;
+    start     = 0;
+  }
 
+  if (err_count > 15 && (cur_temp >= base_temp + 30 && cur_temp < 270))
+  {
+    thermalManager.temp_watch_error_flag = TEMP_WATCH_ERROR;
+    settings.save();
+    _delay_ms(100);
+    MYSERIAL2.printf("Error:Demage hotend temp watch\r\n");
+  }
+}
+void Temperature::_bed_temp_watch(void)
+{
+  static int err_count = 0;  
+  static bool start = 0;
+  static celsius_float_t base_temp = 0.0;
+  celsius_float_t cur_temp =0, target_temp = 0;
+  cur_temp = degBed();
+  target_temp = degTargetBed();
+  if ((cur_temp > 50 && cur_temp > target_temp + 20) && (target_temp < 30))
+  {
+      if (cur_temp >= base_temp + 3)
+      {
+          if (!start)
+          {
+            base_temp = cur_temp;
+            start = true;
+          }
+          err_count++;
+      }
+      else 
+      {
+        err_count = 0;
+      }
+  }
+  else
+  {
+    err_count = 0;
+    base_temp = 0;
+    start     = 0;
+  }
+
+  if (err_count > 15  && (cur_temp >= base_temp + 10 && cur_temp < 105)) 
+  {
+    thermalManager.temp_watch_error_flag = TEMP_WATCH_ERROR;
+    settings.save();
+    _delay_ms(100);
+    MYSERIAL2.printf("Error:Demage bed temp watch\r\n");
+  }
+}
+void Temperature::_temp_watch(void)
+{
+  static uint8_t report_time_count = 0;
+  static uint8_t report_count = 0;
+  static millis_t timeout = millis();
+  if((millis() - timeout) > 1000)
+  {
+    timeout = millis();
+    if(thermalManager.temp_watch_error_flag == TEMP_WATCH_ERROR)
+    {
+      setTargetHotend(0, 0);
+      setTargetBed(0);
+      WRITE_HEATER_0(LOW);
+      WRITE_HEATER_BED(LOW);
+      get_anker_nozzle_board_info()->power_off();
+      report_time_count++;
+      if(report_time_count >= 5)
+      {
+        report_time_count = 0;
+        if(report_count < 5)
+        {
+          report_count++;
+          MYSERIAL2.printf("Error:Demage temp watch\r\n");
+        }
+        else
+        {
+           MYSERIAL2.printf("heater off and nozzle power off!\r\n");
+           if(temp_watch_is_mos2_self_test())
+           {
+            MYSERIAL2.printf("Mos2:Start\r\n");
+            MYSERIAL2.printf("Mos2:End\r\n");
+            temp_watch_mos2_self_test_set(0);
+            report_count = 0;
+           }
+        }
+      }
+    }
+    else
+    {
+      if(!temp_watch_is_mos2_self_test())
+      {
+       _hotend_temp_watch();
+       _bed_temp_watch();
+      }
+      report_time_count = 0;
+      report_count = 0;
+    }
+  }
+}
+void Temperature::_temp_watch_mos2_deal(void)
+{
+  static millis_t timeout = millis();
+  static celsius_float_t base_temp = 0.0;
+  celsius_float_t cur_temp = 0.0;
+  
+  if(temp_watch_is_mos2_self_test())
+  {
+    switch(temp_watch_mos2_deal_step)
+    {
+      case 0:
+      {
+        MYSERIAL2.printf("Mos2:Start\r\n");
+        if(!temp_watch_is_error() && !thermalManager.temp_watch_mos2_stop_flag)
+        {
+          MYSERIAL2.printf("Mos2:Start\r\n");
+          setTargetHotend(0, 0);
+          base_temp = degHotend(0);
+          get_anker_nozzle_board_info()->power_off();
+          thermalManager.setTargetHotend(HEATER_0_MAXTEMP, 0);
+          if(thermalManager.temp_watch_mos2_diff_temp < 1)
+          {
+            thermalManager.temp_watch_mos2_diff_temp = 10.0;
+          }
+          timeout = millis();
+          temp_watch_mos2_deal_step++;
+          MYSERIAL2.printf("base_temp: %f\r\n", base_temp);
+          MYSERIAL2.printf("diff_temp: %f\r\n", thermalManager.temp_watch_mos2_diff_temp);
+        }
+        else
+        {
+          MYSERIAL2.printf("Mos2:End\r\n");
+          temp_watch_mos2_self_test_set(0);
+        }
+        break;
+      }
+      case 1:
+      {
+        cur_temp = degHotend(0);
+        get_anker_nozzle_board_info()->power_off();
+        if((cur_temp > base_temp) && (cur_temp - base_temp) > thermalManager.temp_watch_mos2_diff_temp)
+        {
+          thermalManager.temp_watch_error_flag = TEMP_WATCH_ERROR;
+          settings.save();
+          _delay_ms(100);
+          MYSERIAL2.printf("temp watch mos2 error!\r\n");
+          MYSERIAL2.printf("cur_temp: %f -- %f\r\n", cur_temp, cur_temp - base_temp);
+          temp_watch_mos2_deal_step++;
+        }
+        else
+        {
+          if((millis() - timeout) > 15000)
+          {
+            temp_watch_mos2_deal_step++;
+          }
+        }
+        break;
+      }
+      case 2:
+      {
+        MYSERIAL2.printf("Mos2:End\r\n");
+        thermalManager.setTargetHotend(0, 0);
+        temp_watch_mos2_self_test_set(0);
+        temp_watch_mos2_deal_step = 0;
+        break;
+      }
+
+      default:
+      {
+        temp_watch_mos2_deal_step = 0;
+        break;
+      }
+    }
+  }
+  else
+  {
+    temp_watch_mos2_deal_step = 0;
+  }
+}
+#endif
 void Temperature::_temp_error(const heater_id_t heater_id, PGM_P const serial_msg, PGM_P const lcd_msg) {
 
   static uint8_t killed = 0;
@@ -1277,6 +1524,11 @@ void Temperature::min_temp_error(const heater_id_t heater_id) {
 void Temperature::manage_heater() {
   if (marlin_state == MF_INITIALIZING) return watchdog_refresh(); // If Marlin isn't started, at least reset the watchdog!
 
+  #if ENABLED(ANKER_TEMP_WATCH)
+    _temp_watch();
+    // _temp_watch_mos2_deal();
+  #endif
+
   static bool no_reentry = false;  // Prevent recursion
   if (no_reentry) return;
   REMEMBER(mh, no_reentry, true);
@@ -1336,6 +1588,10 @@ void Temperature::manage_heater() {
 
       temp_hotend[e].soft_pwm_amount = (temp_hotend[e].celsius > temp_range[e].mintemp || is_preheating(e)) && temp_hotend[e].celsius < temp_range[e].maxtemp ? (int)get_pid_output_hotend(e) >> 1 : 0;
 
+      #if ENABLED(ANKER_TEMP_WATCH)
+      if(!temp_watch_is_mos2_self_test())
+      {
+      #endif
       #if WATCH_HOTENDS
         // Make sure temperature is increasing
         if (watch_hotend[e].elapsed(ms)) {          // Enabled and time to check?
@@ -1346,6 +1602,9 @@ void Temperature::manage_heater() {
             _temp_error((heater_id_t)e, str_t_heating_failed, GET_TEXT(MSG_HEATING_FAILED_LCD));
           }
         }
+      #endif
+      #if ENABLED(ANKER_TEMP_WATCH)
+      }
       #endif
 
     } // HOTEND_LOOP
