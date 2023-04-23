@@ -1198,6 +1198,15 @@ private:
         static void M3004();
         static void M3005();
         static void M3009();
+        static void M3011();
+      #endif
+      #if ENABLED(ANKER_MAKE_API)
+        static void M4201();
+        static void M4203();
+        static void M4204();
+        static void M4205();
+        static void M4899();
+        static void M4900();
       #endif
   #endif
 

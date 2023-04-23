@@ -228,6 +228,10 @@ float Planner::previous_nominal_speed_sqr;
 
 #if ENABLED(LIN_ADVANCE)
   float Planner::extruder_advance_K[EXTRUDERS]; // Initialized by settings.load()
+  #if ENABLED(ANKER_E_SMOOTH)
+    uint32_t  Planner::extruder_K_steps_per_s2 = MAX_EXTRA_K_ACC*1312; // Smooth acceleration of K-value velocity(steps/s2)
+  #endif
+  uint8_t Planner::LIN_ADV_version_change = LIN_ADV_VERSION_0; // = 1 version2 =0 default
 #endif
 
 #if HAS_POSITION_FLOAT
@@ -711,7 +715,7 @@ void Planner::init() {
     // All other 32-bit MPUs can easily do inverse using hardware division,
     // so we don't need to reduce precision or to use assembly language at all.
     // This routine, for all other archs, returns 0x100000000 / d ~= 0xFFFFFFFF / d
-    static FORCE_INLINE uint32_t get_period_inverse(const uint32_t d) {
+    FORCE_INLINE static uint32_t get_period_inverse(const uint32_t d) {
       return d ? 0xFFFFFFFF / d : 0xFFFFFFFF;
     }
   #endif
@@ -759,6 +763,20 @@ block_t* Planner::get_current_block() {
     if (block_buffer_tail == block_buffer_planned)
       block_buffer_planned = block_buffer_nonbusy;
 
+    #if ENABLED(ANKER_E_SMOOTH)
+      if(LIN_ADV_version_change >= LIN_ADV_VERSION_2){
+        if(block_buffer_head != block_buffer_nonbusy){// If there stiil are any moves queued.
+          block_t * const nextblock = &block_buffer[block_buffer_nonbusy];
+          if (TEST(nextblock->flag, BLOCK_BIT_RECALCULATE)){// No trapezoid calculated?
+            LA_CLEAR_SEGMENT(stepper.la_status.next); // clear
+            return block;// Return the block
+          }
+          stepper.la_status.next = nextblock->la_segment;
+        }else{ // clear
+          LA_CLEAR_SEGMENT(stepper.la_status.next);
+        }
+      }
+    #endif
     // Return the block
     return block;
   }
@@ -788,41 +806,52 @@ void Planner::calculate_trapezoid_for_block(block_t * const block, const_float_t
   NOLESS(initial_rate, uint32_t(MINIMAL_STEP_RATE));
   NOLESS(final_rate, uint32_t(MINIMAL_STEP_RATE));
 
-  #if ENABLED(S_CURVE_ACCELERATION)
-    uint32_t cruise_rate = initial_rate;
+  #if EITHER(S_CURVE_ACCELERATION, LIN_ADVANCE)
+    // If we have some plateau time, the cruise rate will be the nominal rate
+    uint32_t cruise_rate = block->nominal_rate;
   #endif
+
+  // Steps for acceleration, plateau and deceleration
+  int32_t plateau_steps = block->step_event_count;
+  uint32_t accelerate_steps = 0,
+           decelerate_steps = 0;
 
   const int32_t accel = block->acceleration_steps_per_s2;
+  float inverse_accel = 0.0f;
+  if (accel != 0) {
+    inverse_accel = 1.0f / accel;
+    const float half_inverse_accel = 0.5f * inverse_accel,
+                nominal_rate_sq = sq(float(block->nominal_rate)),
+                // Steps required for acceleration, deceleration to/from nominal rate
+                decelerate_steps_float = half_inverse_accel * (nominal_rate_sq - sq(float(final_rate)));
+          float accelerate_steps_float = half_inverse_accel * (nominal_rate_sq - sq(float(initial_rate)));
+    accelerate_steps = CEIL(accelerate_steps_float);
+    decelerate_steps = FLOOR(decelerate_steps_float);
 
-          // Steps required for acceleration, deceleration to/from nominal rate
-  uint32_t accelerate_steps = CEIL(estimate_acceleration_distance(initial_rate, block->nominal_rate, accel)),
-           decelerate_steps = FLOOR(estimate_acceleration_distance(block->nominal_rate, final_rate, -accel));
-          // Steps between acceleration and deceleration, if any
-  int32_t plateau_steps = block->step_event_count - accelerate_steps - decelerate_steps;
+    // Steps between acceleration and deceleration, if any
+    plateau_steps -= accelerate_steps + decelerate_steps;
 
-  // Does accelerate_steps + decelerate_steps exceed step_event_count?
-  // Then we can't possibly reach the nominal rate, there will be no cruising.
-  // Use intersection_distance() to calculate accel / braking time in order to
-  // reach the final_rate exactly at the end of this block.
-  if (plateau_steps < 0) {
-    const float accelerate_steps_float = CEIL(intersection_distance(initial_rate, final_rate, accel, block->step_event_count));
-    accelerate_steps = _MIN(uint32_t(_MAX(accelerate_steps_float, 0)), block->step_event_count);
-    plateau_steps = 0;
+    // Does accelerate_steps + decelerate_steps exceed step_event_count?
+    // Then we can't possibly reach the nominal rate, there will be no cruising.
+    // Calculate accel / braking time in order to reach the final_rate exactly
+    // at the end of this block.
+    if (plateau_steps < 0) {
+      accelerate_steps_float = CEIL((block->step_event_count + accelerate_steps_float - decelerate_steps_float) * 0.5f);
+      accelerate_steps = _MIN(uint32_t(_MAX(accelerate_steps_float, 0)), block->step_event_count);
+      decelerate_steps = block->step_event_count - accelerate_steps;
 
-    #if ENABLED(S_CURVE_ACCELERATION)
-      // We won't reach the cruising rate. Let's calculate the speed we will reach
-      cruise_rate = final_speed(initial_rate, accel, accelerate_steps);
-    #endif
+      #if EITHER(S_CURVE_ACCELERATION, LIN_ADVANCE)
+        // We won't reach the cruising rate. Let's calculate the speed we will reach
+        cruise_rate = final_speed(initial_rate, accel, accelerate_steps);
+      #endif
+    }
   }
-  #if ENABLED(S_CURVE_ACCELERATION)
-    else // We have some plateau time, so the cruise rate will be the nominal rate
-      cruise_rate = block->nominal_rate;
-  #endif
 
   #if ENABLED(S_CURVE_ACCELERATION)
+    const float rate_factor = inverse_accel * (STEPPER_TIMER_RATE);
     // Jerk controlled speed requires to express speed versus time, NOT steps
-    uint32_t acceleration_time = ((float)(cruise_rate - initial_rate) / accel) * (STEPPER_TIMER_RATE),
-             deceleration_time = ((float)(cruise_rate - final_rate) / accel) * (STEPPER_TIMER_RATE),
+    uint32_t acceleration_time = rate_factor * float(cruise_rate - initial_rate),
+             deceleration_time = rate_factor * float(cruise_rate - final_rate),
     // And to offload calculations from the ISR, we also calculate the inverse of those times here
              acceleration_time_inverse = get_period_inverse(acceleration_time),
              deceleration_time_inverse = get_period_inverse(deceleration_time);
@@ -830,7 +859,7 @@ void Planner::calculate_trapezoid_for_block(block_t * const block, const_float_t
 
   // Store new block parameters
   block->accelerate_until = accelerate_steps;
-  block->decelerate_after = accelerate_steps + plateau_steps;
+  block->decelerate_after = block->step_event_count - decelerate_steps;
   block->initial_rate = initial_rate;
   #if ENABLED(S_CURVE_ACCELERATION)
     block->acceleration_time = acceleration_time;
@@ -841,6 +870,31 @@ void Planner::calculate_trapezoid_for_block(block_t * const block, const_float_t
   #endif
   block->final_rate = final_rate;
 
+  #if ENABLED(LIN_ADVANCE)
+    // version 1
+    if (block->la_advance_rate) {
+      const float comp = extruder_advance_K[E_INDEX_N(block->extruder)] * block->steps.e / block->step_event_count;
+      block->max_adv_steps_v1 = cruise_rate * comp;
+      block->final_adv_steps_v1 = final_rate * comp;
+      #if ENABLED(ANKER_E_SMOOTH)
+        // Calculate the maximum speed that can be accelerated
+        block->la_segment.acc_v2 = block->la_segment.double_steps_per_s2 * accelerate_steps; // vt^2 = 2as
+        block->la_segment.dec_v2 = block->la_segment.double_steps_per_s2 * decelerate_steps; // vt^2 = 2as
+        NOMORE(block->la_segment.acc_v2, sq(block->la_advance_rate));
+        NOMORE(block->la_segment.dec_v2, sq(block->la_advance_rate));
+        // Mark whether there is an acceleration or deceleration section in the block.
+        (accelerate_steps > LA_MAX_NOISE_STEP) ? (block->la_segment.acc = true) : (block->la_segment.acc = false);
+        (decelerate_steps > LA_MAX_NOISE_STEP) ? (block->la_segment.dec = true) : (block->la_segment.dec = false);
+        (plateau_steps > LA_MAX_NOISE_STEP) ? (block->la_segment.cruise = true) : (block->la_segment.cruise = false);
+        block->la_segment.la_advance_rate = block->la_advance_rate;
+      #endif
+    }
+	  #if ENABLED(ANKER_E_SMOOTH)
+	  else{
+      block->la_segment.la_advance_rate = 0;
+    }
+	  #endif
+  #endif
   /**
    * Laser trapezoid calculations
    *
@@ -1159,7 +1213,7 @@ void Planner::recalculate_trapezoids() {
 
   // Go from the tail (currently executed block) to the first block, without including it)
   block_t *block = nullptr, *next = nullptr;
-  float current_entry_speed = 0.0, next_entry_speed = 0.0;
+  float current_entry_speed = 0.0f, next_entry_speed = 0.0f;
   while (block_index != head_block_index) {
 
     next = &block_buffer[block_index];
@@ -1169,13 +1223,12 @@ void Planner::recalculate_trapezoids() {
       next_entry_speed = SQRT(next->entry_speed_sqr);
 
       if (block) {
-        // Recalculate if current block entry or exit junction speed has changed.
-        if (TEST(block->flag, BLOCK_BIT_RECALCULATE) || TEST(next->flag, BLOCK_BIT_RECALCULATE)) {
 
-          // Mark the current block as RECALCULATE, to protect it from the Stepper ISR running it.
-          // Note that due to the above condition, there's a chance the current block isn't marked as
-          // RECALCULATE yet, but the next one is. That's the reason for the following line.
-          SBI(block->flag, BLOCK_BIT_RECALCULATE);
+        // If the next block is marked to RECALCULATE, also mark the previously-fetched one
+        if (TEST(next->flag, BLOCK_BIT_RECALCULATE)) SBI(block->flag, BLOCK_BIT_RECALCULATE);
+
+        // Recalculate if current block entry or exit junction speed has changed.
+        if (TEST(block->flag, BLOCK_BIT_RECALCULATE)) {
 
           // But there is an inherent race condition here, as the block maybe
           // became BUSY, just before it was marked as RECALCULATE, so check
@@ -2429,12 +2482,17 @@ bool Planner::_populate_block(block_t * const block, bool split_move,
   // Compute and limit the acceleration rate for the trapezoid generator.
   const float steps_per_mm = block->step_event_count * inverse_millimeters;
   uint32_t accel;
+  #if ENABLED(LIN_ADVANCE)
+    block->use_advance_lead = false;
+	  #if ENABLED(ANKER_E_SMOOTH)
+      LA_CLEAR_SEGMENT(block->la_segment);
+	  #endif
+  #endif
   if (LINEAR_AXIS_GANG(
          !block->steps.a, && !block->steps.b, && !block->steps.c,
       && !block->steps.i, && !block->steps.j, && !block->steps.k)
   ) {                                                             // Is this a retract / recover move?
     accel = CEIL(settings.retract_acceleration * steps_per_mm);   // Convert to: acceleration steps/sec^2
-    TERN_(LIN_ADVANCE, block->use_advance_lead = false);          // No linear advance for simple retract/recover
   }
   else {
     #define LIMIT_ACCEL_LONG(AXIS,INDX) do{ \
@@ -2467,29 +2525,25 @@ bool Planner::_populate_block(block_t * const block, bool split_move,
        *
        * de > 0             : Extruder is running forward (e.g., for "Wipe while retracting" (Slic3r) or "Combing" (Cura) moves)
        */
-      block->use_advance_lead =  esteps
-                              && extruder_advance_K[active_extruder]
-                              && de > 0;
+      block->use_advance_lead = esteps && extruder_advance_K[active_extruder] && de > 0;
 
       if (block->use_advance_lead) {
         block->e_D_ratio = (target_float.e - position_float.e) /
-          #if IS_KINEMATIC
-            block->millimeters
-          #else
+          TERN(IS_KINEMATIC, block->millimeters,
             SQRT(sq(target_float.x - position_float.x)
                + sq(target_float.y - position_float.y)
                + sq(target_float.z - position_float.z))
-          #endif
-        ;
+          );
 
         // Check for unusual high e_D ratio to detect if a retract move was combined with the last print move due to min. steps per segment. Never execute this with advance!
         // This assumes no one will use a retract length of 0mm < retr_length < ~0.2mm and no one will print 100mm wide lines using 3mm filament or 35mm wide lines using 1.75mm filament.
         if (block->e_D_ratio > 3.0f)
           block->use_advance_lead = false;
         else {
+          // Scale E acceleration so that it will be possible to jump to the advance speed.
           const uint32_t max_accel_steps_per_s2 = MAX_E_JERK(extruder) / (extruder_advance_K[active_extruder] * block->e_D_ratio) * steps_per_mm;
           if (TERN0(LA_DEBUG, accel > max_accel_steps_per_s2))
-            SERIAL_ECHOLNPGM("Acceleration limited.");
+            MYSERIAL2.printLine("Acceleration limited. %d\r\n", (uint32_t)(max_accel_steps_per_s2 / steps_per_mm));
           NOMORE(accel, max_accel_steps_per_s2);
         }
       }
@@ -2521,17 +2575,29 @@ bool Planner::_populate_block(block_t * const block, bool split_move,
   }
   block->acceleration_steps_per_s2 = accel;
   block->acceleration = accel / steps_per_mm;
-  #if DISABLED(S_CURVE_ACCELERATION)
+  #if (DISABLED(S_CURVE_ACCELERATION) || ENABLED(ANKER_E_SMOOTH)) // LA_V0
     block->acceleration_rate = (uint32_t)(accel * (sq(4096.0f) / (STEPPER_TIMER_RATE)));
   #endif
   #if ENABLED(LIN_ADVANCE)
+    block->la_advance_rate = 0;
+    block->la_scaling = 0;
+    #if ENABLED(ANKER_E_SMOOTH)
+	  block->la_segment.double_steps_per_s2 =  2 * planner.extruder_K_steps_per_s2;
+	#endif
+
     if (block->use_advance_lead) {
       block->advance_speed = (STEPPER_TIMER_RATE) / (extruder_advance_K[active_extruder] * block->e_D_ratio * block->acceleration * settings.axis_steps_per_mm[E_AXIS_N(extruder)]);
+      // the Bresenham algorithm will convert this step rate into extruder steps
+      block->la_advance_rate = extruder_advance_K[E_INDEX_N(extruder)] * block->acceleration_steps_per_s2;
+
+      // reduce LA ISR frequency by calling it only often enough to ensure that there will
+      // never be more than four extruder steps per call
+      for (uint32_t dividend = block->steps.e << 1; dividend <= (block->step_event_count >> 2); dividend <<= 1)
+        block->la_scaling++;
+
       #if ENABLED(LA_DEBUG)
-        if (extruder_advance_K[active_extruder] * block->e_D_ratio * block->acceleration * 2 < SQRT(block->nominal_speed_sqr) * block->e_D_ratio)
-          SERIAL_ECHOLNPGM("More than 2 steps per eISR loop executed.");
-        if (block->advance_speed < 200)
-          SERIAL_ECHOLNPGM("eISR running at > 10kHz.");
+        if (block->la_advance_rate >> block->la_scaling > 10000)
+          MYSERIAL2.printLine("eISR running at > 10kHz: %d\r\n", block->la_advance_rate);
       #endif
     }
   #endif
@@ -3253,11 +3319,13 @@ void Planner::set_max_acceleration(const uint8_t axis, float inMaxAccelMMS2) {
     #ifdef MAX_ACCEL_EDIT_VALUES
       constexpr xyze_float_t max_accel_edit = MAX_ACCEL_EDIT_VALUES;
       const xyze_float_t &max_acc_edit_scaled = max_accel_edit;
+      constexpr xyze_float_t LA_V1_max_accel_edit = LA_V1_MAX_ACCEL_EDIT_VALUES;
+      const xyze_float_t &LA_V1_max_acc_edit_scaled = LA_V1_max_accel_edit;
     #else
       constexpr xyze_float_t max_accel_edit = DEFAULT_MAX_ACCELERATION;
       const xyze_float_t max_acc_edit_scaled = max_accel_edit * 2;
     #endif
-    limit_and_warn(inMaxAccelMMS2, axis, PSTR("Acceleration"), max_acc_edit_scaled);
+    limit_and_warn(inMaxAccelMMS2, axis, PSTR("Acceleration"), (LIN_ADV_version_change >= LIN_ADV_VERSION_2 ? LA_V1_max_acc_edit_scaled : max_acc_edit_scaled));
   #endif
   settings.max_acceleration_mm_per_s2[axis] = inMaxAccelMMS2;
 
@@ -3276,11 +3344,13 @@ void Planner::set_max_feedrate(const uint8_t axis, float inMaxFeedrateMMS) {
     #ifdef MAX_FEEDRATE_EDIT_VALUES
       constexpr xyze_float_t max_fr_edit = MAX_FEEDRATE_EDIT_VALUES;
       const xyze_float_t &max_fr_edit_scaled = max_fr_edit;
+      constexpr xyze_float_t LA_V1_max_fr_edit = LA_V1_MAX_FEEDRATE_EDIT_VALUES;
+      const xyze_float_t &LA_V1_max_fr_edit_scaled = LA_V1_max_fr_edit;
     #else
       constexpr xyze_float_t max_fr_edit = DEFAULT_MAX_FEEDRATE;
       const xyze_float_t max_fr_edit_scaled = max_fr_edit * 2;
     #endif
-    limit_and_warn(inMaxFeedrateMMS, axis, PSTR("Feedrate"), max_fr_edit_scaled);
+    limit_and_warn(inMaxFeedrateMMS, axis, PSTR("Feedrate"), (LIN_ADV_version_change >= LIN_ADV_VERSION_2 ? LA_V1_max_fr_edit_scaled : max_fr_edit_scaled));
   #endif
   settings.max_feedrate_mm_s[axis] = inMaxFeedrateMMS;
 }
@@ -3303,9 +3373,10 @@ void Planner::set_max_feedrate(const uint8_t axis, float inMaxFeedrateMMS) {
             (DEFAULT_ZJERK) * 2, (DEFAULT_EJERK) * 2 }
         #endif
       ;
-      limit_and_warn(inMaxJerkMMS, axis, PSTR("Jerk"), max_jerk_edit);
+      constexpr xyze_float_t la_v1_max_jerk_edit   = LA_V1_MAX_JERK_EDIT_VALUES;
+      limit_and_warn(inMaxJerkMMS, axis, PSTR("Jerk"), (planner.LIN_ADV_version_change >= LIN_ADV_VERSION_2) ? la_v1_max_jerk_edit : max_jerk_edit);
     #endif
-    if (axis == E_AXIS || axis == Z_AXIS) {
+    if ((planner.LIN_ADV_version_change <= LIN_ADV_VERSION_1) && (axis == E_AXIS || axis == Z_AXIS)) {
       return;
     }
     max_jerk[axis] = inMaxJerkMMS;

@@ -1401,7 +1401,7 @@ void MarlinSettings::postprocess() {
 
     //2021-10-18 harley
     #if ENABLED(BABYSTEP_DISPLAY_TOTAL)
-      EEPROM_WRITE(babystep.axis_total[BS_AXIS_IND(Z_AXIS)]);
+      EEPROM_WRITE(babystep.axis_total[BS_TOTAL_IND(Z_AXIS)]);
     #endif
     //2021-10-18 harley
 
@@ -4049,7 +4049,7 @@ void MarlinSettings::reset() {
       CONFIG_ECHO_HEADING("Babystep total:");
       // CONFIG_ECHO_START();
       CONFIG_ECHO_MSG(
-        "  M290 Z", int(babystep.axis_total[BS_AXIS_IND(Z_AXIS)])
+        "  M290 Z", int(babystep.axis_total[BS_TOTAL_IND(Z_AXIS)])
       );
     #endif
    //2021-10-18 harley

@@ -394,6 +394,8 @@ class Temperature {
       static uint8_t hotend_minraw_err_cnt[HOTENDS];
       static uint8_t hotend_maxraw_err_cnt[HOTENDS];
       static uint8_t hotend_maxtemp_err_cnt[HOTENDS];
+      static celsius_float_t hotend_maxtemp_pre_value;
+      static uint8_t hotend_maxtemp_pre_stable_cnt;
       static uint8_t bed_minraw_err_cnt;
       static uint8_t bed_maxraw_err_cnt;
       static uint8_t bed_maxtemp_err_cnt;

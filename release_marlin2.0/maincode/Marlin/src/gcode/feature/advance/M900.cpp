@@ -110,6 +110,22 @@ void GcodeSuite::M900() {
     kref = newK;
   }
 
+
+  #if (EXTRUDERS < 2) && ENABLED(ANKER_E_SMOOTH)
+    if (parser.seenval('A')){//add by Anan.huang
+      const uint32_t max_acc_steps =  (uint32_t)((sq(60.0f)*planner.settings.axis_steps_per_mm[E_AXIS]/(2.0f*(float)planner.settings.max_acceleration_mm_per_s2[E_AXIS]))); // s = vt^2/2a  max_e_speed = 60mm/s
+      const uint32_t max_smooth_accel =  (0xFFFFFFFF/(2*max_acc_steps));// overflow protection less than uint32_t
+      float smooth_accel = parser.value_float();  // mm/s2 1733mm/s2
+      uint32_t extra_K_acc_steps_per_s2 = smooth_accel * planner.settings.axis_steps_per_mm[E_AXIS];// get Smooth acceleration of K-value velocity(steps/s2)
+      if(WITHIN(extra_K_acc_steps_per_s2, 0, max_smooth_accel)){
+        planner.extruder_K_steps_per_s2 = extra_K_acc_steps_per_s2;
+        SERIAL_ECHO_MSG("extruder_K_acc: smooth_accel=", smooth_accel, "  extruder_K_steps_per_s2 =", planner.extruder_K_steps_per_s2);
+      }else{// out of range
+        SERIAL_ECHO_MSG("M900 A<accel> out of range");
+      }
+    }
+  #endif
+
   if (!parser.seen_any()) {
 
     #if ENABLED(EXTRA_LIN_ADVANCE_K)
@@ -130,6 +146,10 @@ void GcodeSuite::M900() {
       SERIAL_ECHO_START();
       #if EXTRUDERS < 2
         SERIAL_ECHOLNPAIR("Advance K=", planner.extruder_advance_K[0]);
+        #if ENABLED(ANKER_E_SMOOTH)
+		      const float smooth_accel = planner.extruder_K_steps_per_s2 / planner.settings.axis_steps_per_mm[E_AXIS];
+          SERIAL_ECHO_MSG("extruder_K_acc: smooth_accel=", smooth_accel, "  extruder_K_steps_per_s2 =", planner.extruder_K_steps_per_s2);
+        #endif
       #else
         SERIAL_ECHOPGM("Advance K");
         LOOP_L_N(i, EXTRUDERS) {

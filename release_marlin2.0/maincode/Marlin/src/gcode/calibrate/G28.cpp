@@ -229,7 +229,7 @@
       xy_float_t okay_homing_xy = safe_homing_xy1;
       okay_homing_xy -= home_offset;
     #else
-      constexpr xy_float_t okay_homing_xy = safe_homing_xy;
+      constexpr xy_float_t okay_homing_xy = safe_homing_xy1;
     #endif
 
     destination.set(okay_homing_xy, current_position.z);

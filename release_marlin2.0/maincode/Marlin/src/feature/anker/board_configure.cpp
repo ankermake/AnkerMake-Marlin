@@ -60,7 +60,11 @@ void Board_Configure:: init(void)
 	board_configure.adc1=board_configure.Get_Adc_Average(0,10);
     board_configure.adc2=board_configure.Get_Adc_Average(1,10);
     
-    if((board_configure.adc1>=0)&&(board_configure.adc1<=100))
+    if((board_configure.adc1>496)&&(board_configure.adc1<869)) //100K/20K 0.55V => 0.4~0.7V
+	{
+		strcpy(board_configure.board_version,MAIN_BOARD_V8111_V0_5); 
+	}
+	else if((board_configure.adc1>=0)&&(board_configure.adc1<=100))
 	{
 		strcpy(board_configure.board_version,MAIN_BOARD_V8111_V0_2); 
 	}
@@ -77,12 +81,5 @@ void Board_Configure:: init(void)
 	{
 		strcpy(board_configure.board_chip,STM32F407VGT6_CHIP); 
 	}
-
-
 }
-
-
-
-
-
 #endif

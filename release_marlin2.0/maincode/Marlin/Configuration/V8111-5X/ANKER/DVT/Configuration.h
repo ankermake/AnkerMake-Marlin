@@ -115,7 +115,7 @@
  *
  * :[2400, 9600, 19200, 38400, 57600, 115200, 250000, 500000, 1000000]
  */
-#define BAUDRATE 115200
+#define BAUDRATE 1000000//115200
 #define BAUD_RATE_GCODE     // Enable G-code M575 to set the baud rate
 
 /**
@@ -998,6 +998,17 @@
 
 #define DEFAULT_EJERK    3.0//10.0  // May be used by Linear Advance
 
+
+#define LA_V1_DEFAULT_MAX_FEEDRATE          { 600, 600, 50, 80 }
+#define LA_V1_MAX_FEEDRATE_EDIT_VALUES      { 600, 600, 100, 100 }
+#define LA_V1_DEFAULT_MAX_ACCELERATION      { 6000, 6000, 100, 4000 }
+#define LA_V1_MAX_ACCEL_EDIT_VALUES         { 8000, 8000, 500, 8000 }
+#define LA_V1_MAX_JERK_EDIT_VALUES          { 100, 100, 100, 100 }
+#define LA_V1_DEFAULT_EJERK                 18.0      // May be used by Linear Advance
+#define LA_V1_DEFAULT_ACCELERATION          6000    // X, Y, Z and E acceleration for printing moves
+#define LA_V1_DEFAULT_RETRACT_ACCELERATION  4000    // E acceleration for retracts
+#define LA_V1_DEFAULT_TRAVEL_ACCELERATION   6000    // X, Y, Z acceleration for travel (non printing) moves
+
 /**
  * Junction Deviation Factor
  *
@@ -1022,7 +1033,7 @@
  *
  * See https://github.com/synthetos/TinyG/wiki/Jerk-Controlled-Motion-Explained
  */
-//#define S_CURVE_ACCELERATION
+#define S_CURVE_ACCELERATION
 
 //===========================================================================
 //============================= Z Probe Options =============================

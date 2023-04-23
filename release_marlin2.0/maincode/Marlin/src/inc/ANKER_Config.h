@@ -25,6 +25,7 @@
 //Motherboard Version Management
 #define MAIN_BOARD_V8111_V0_2            "V8111_MAIN_V0.2"
 #define MAIN_BOARD_V8111_V0_3            "V8111_MAIN_V0.3"
+#define MAIN_BOARD_V8111_V0_5            "V8111_MAIN_V0.5"
 
 #define MAIN_BOARD_VERSION               MAIN_BOARD_V8111_V0_2
 
@@ -47,7 +48,7 @@
 /*******************************Functional API Configuration****************************/
 #if MACCHINE == MOTOR_5X_DVT
     #ifndef SHORT_BUILD_VERSION
-     #define SHORT_BUILD_VERSION            "V8111_V2.0.65"
+     #define SHORT_BUILD_VERSION            "V8111_V2.0.72"
     #endif
     #define ANKER_MAKE_API           1 //gcode
     #define ANKER_GCODE_CHECK        0
@@ -88,6 +89,7 @@
     #define ANKER_TEMP_WATCH         1
     #define ANKER_VALIDATE_HOMING_ENDSTOPS 1
     #define ANKER_TEMP_ADC_FILTER    1
+    #define ANKER_E_SMOOTH           1
 #endif
 
 /*******************************Error detection****************************/

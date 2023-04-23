@@ -50,7 +50,7 @@
 #endif
 
 // Disable multiple steps per ISR
-//#define DISABLE_MULTI_STEPPING
+#define DISABLE_MULTI_STEPPING
 
 //
 // Estimate the amount of time the Stepper ISR will take to execute
@@ -235,6 +235,34 @@
 // This does not account for the possibility of multi-stepping.
 // Perhaps DISABLE_MULTI_STEPPING should be required with ADAPTIVE_STEP_SMOOTHING.
 #define MIN_STEP_ISR_FREQUENCY (MAX_STEP_ISR_FREQUENCY_1X / 2)
+#if ENABLED(ANKER_E_SMOOTH)
+
+#define INTERVAL_4US ((STEPPER_TIMER_RATE) / 250000UL)
+typedef struct {//add by Anan.huang
+  la_block_bits_t pre;
+  la_block_bits_t next;
+  uint32_t growth_v0_2; // (steps/s)^2
+}la_stepper_bits_t;
+#endif
+typedef struct{
+  struct {
+    uint32_t LA_isr_rate;
+    uint16_t LA_current_adv_steps, LA_final_adv_steps, LA_max_adv_steps; // Copy from current executed block. Needed because current_block is set to NULL "too early".
+    int8_t LA_steps;
+    bool LA_use_advance_lead;
+  }v0;
+  struct {
+      uint32_t la_interval;      // Interval between ISR calls for LA
+      int32_t  la_delta_error,   // Analogue of delta_error.e for E steps in LA ISR
+               la_dividend,      // Analogue of advance_dividend.e for E steps in LA ISR
+               la_advance_steps; // Count of steps added to increase nozzle pressure
+      bool     la_active;        // Whether linear advance is used on the present segment.
+      #if ENABLED(ANKER_E_SMOOTH)
+      bool     la_speed_limit_trigger; // Speed threshold trigger on direction switch
+      uint32_t la_current_advance_rate;
+      #endif
+  }v1;
+}LA_version_tu;
 
 //
 // Stepper class definition
@@ -270,6 +298,10 @@ class Stepper {
 
     #if HAS_FREEZE_PIN
       static bool frozen;                   // Set this flag to instantly freeze motion
+    #endif
+
+    #if ENABLED(ANKER_E_SMOOTH)//add by Anan.huang
+      static la_stepper_bits_t la_status;
     #endif
 
   private:
@@ -309,7 +341,8 @@ class Stepper {
 
     // Delta error variables for the Bresenham line tracer
     static xyze_long_t delta_error;
-    static xyze_ulong_t advance_dividend;
+
+    static xyze_long_t advance_dividend;
     static uint32_t advance_divisor,
                     step_events_completed,  // The number of step events executed in the current block
                     accelerate_until,       // The point from where we need to stop acceleration
@@ -336,10 +369,8 @@ class Stepper {
 
     #if ENABLED(LIN_ADVANCE)
       static constexpr uint32_t LA_ADV_NEVER = 0xFFFFFFFF;
-      static uint32_t nextAdvanceISR, LA_isr_rate;
-      static uint16_t LA_current_adv_steps, LA_final_adv_steps, LA_max_adv_steps; // Copy from current executed block. Needed because current_block is set to NULL "too early".
-      static int8_t LA_steps;
-      static bool LA_use_advance_lead;
+      static uint32_t nextAdvanceISR;
+      static LA_version_tu LA_ver;
     #endif
 
     #if ENABLED(INTEGRATED_BABYSTEPPING)
@@ -351,8 +382,8 @@ class Stepper {
       static page_step_state_t page_step_state;
     #endif
 
-    static int32_t ticks_nominal;
-    #if DISABLED(S_CURVE_ACCELERATION)
+    static uint32_t ticks_nominal;
+    #if DISABLED(S_CURVE_ACCELERATION) || ENABLED(ANKER_E_SMOOTH) //la_v0
       static uint32_t acc_step_rate; // needed for deceleration start point
     #endif
 
@@ -415,6 +446,13 @@ class Stepper {
       // The Linear advance ISR phase
       static uint32_t advance_isr();
       FORCE_INLINE static void initiateLA() { nextAdvanceISR = 0; }
+      static void la_acc_calc(void);
+      static void la_dec_calc(uint32_t step_rate);
+      #if ENABLED(ANKER_E_SMOOTH)
+       static void v1_advance_isr();
+       static uint32_t la_calc_Acc_speed_curves(const int32_t length, const int32_t steps_now, const uint32_t advance_rate_v2);
+       static uint32_t la_calc_Dec_speed_curves(const int32_t length, const int32_t steps_now, const uint32_t advance_rate_v2);
+      #endif
     #endif
 
     #if ENABLED(INTEGRATED_BABYSTEPPING)
@@ -448,9 +486,15 @@ class Stepper {
         if (IS_PAGE(current_block))
           page_manager.free_page(current_block->page_idx);
       #endif
+
+      #if ENABLED(ANKER_E_SMOOTH) //add by Anan.huang
+        la_status.pre = current_block->la_segment;
+      #endif
+
       current_block = nullptr;
       axis_did_move = 0;
       planner.release_current_block();
+      TERN_(LIN_ADVANCE, LA_ver.v1.la_interval = nextAdvanceISR = LA_ADV_NEVER);
     }
 
     // Quickly stop all steppers
@@ -533,65 +577,11 @@ class Stepper {
     // Set the current position in steps
     static void _set_position(const abce_long_t &spos);
 
-    FORCE_INLINE static uint32_t calc_timer_interval(uint32_t step_rate, uint8_t *loops) {
-      uint32_t timer;
+    // Calculate the timing interval for the given step rate
+    static hal_timer_t calc_timer_interval(uint32_t step_rate);
 
-      // Scale the frequency, as requested by the caller
-      step_rate <<= oversampling_factor;
-
-      uint8_t multistep = 1;
-      #if DISABLED(DISABLE_MULTI_STEPPING)
-
-        // The stepping frequency limits for each multistepping rate
-        static const uint32_t limit[] PROGMEM = {
-          (  MAX_STEP_ISR_FREQUENCY_1X     ),
-          (  MAX_STEP_ISR_FREQUENCY_2X >> 1),
-          (  MAX_STEP_ISR_FREQUENCY_4X >> 2),
-          (  MAX_STEP_ISR_FREQUENCY_8X >> 3),
-          ( MAX_STEP_ISR_FREQUENCY_16X >> 4),
-          ( MAX_STEP_ISR_FREQUENCY_32X >> 5),
-          ( MAX_STEP_ISR_FREQUENCY_64X >> 6),
-          (MAX_STEP_ISR_FREQUENCY_128X >> 7)
-        };
-
-        // Select the proper multistepping
-        uint8_t idx = 0;
-        while (idx < 7 && step_rate > (uint32_t)pgm_read_dword(&limit[idx])) {
-          step_rate >>= 1;
-          multistep <<= 1;
-          ++idx;
-        };
-      #else
-        NOMORE(step_rate, uint32_t(MAX_STEP_ISR_FREQUENCY_1X));
-      #endif
-      *loops = multistep;
-
-      #ifdef CPU_32_BIT
-        // In case of high-performance processor, it is able to calculate in real-time
-        timer = uint32_t(STEPPER_TIMER_RATE) / step_rate;
-      #else
-        constexpr uint32_t min_step_rate = (F_CPU) / 500000U;
-        NOLESS(step_rate, min_step_rate);
-        step_rate -= min_step_rate; // Correct for minimal speed
-        if (step_rate >= (8 * 256)) { // higher step rate
-          const uint8_t tmp_step_rate = (step_rate & 0x00FF);
-          const uint16_t table_address = (uint16_t)&speed_lookuptable_fast[(uint8_t)(step_rate >> 8)][0],
-                         gain = (uint16_t)pgm_read_word(table_address + 2);
-          timer = MultiU16X8toH16(tmp_step_rate, gain);
-          timer = (uint16_t)pgm_read_word(table_address) - timer;
-        }
-        else { // lower step rates
-          uint16_t table_address = (uint16_t)&speed_lookuptable_slow[0][0];
-          table_address += ((step_rate) >> 1) & 0xFFFC;
-          timer = (uint16_t)pgm_read_word(table_address)
-                - (((uint16_t)pgm_read_word(table_address + 2) * (uint8_t)(step_rate & 0x0007)) >> 3);
-        }
-        // (there is no need to limit the timer value here. All limits have been
-        // applied above, and AVR is able to keep up at 30khz Stepping ISR rate)
-      #endif
-
-      return timer;
-    }
+    // Calculate timing interval and steps-per-ISR for the given step rate
+    static hal_timer_t calc_timer_interval(uint32_t step_rate, uint8_t &loops);
 
     #if ENABLED(S_CURVE_ACCELERATION)
       static void _calc_bezier_curve_coeffs(const int32_t v0, const int32_t v1, const uint32_t av);

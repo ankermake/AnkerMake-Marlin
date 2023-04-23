@@ -1120,6 +1120,7 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
             case 3004: M3004(); break;
             case 3005: M3005(); break;
             case 3009: M3009(); break;
+            case 3011: M3011(); break;
           #endif
           #if ENABLED(EVT_HOMING_5X)
             case 89: M89(); break;  
@@ -1127,6 +1128,14 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
           #endif
           #if ENABLED(ANKER_EXTRUDERS_RECEIVE)
             case 2008: M2008(); break;           
+          #endif
+          #if ENABLED(ANKER_MAKE_API)
+            case 4201:M4201(); break;
+            case 4203:M4203(); break;
+            case 4204:M4204(); break; 
+            case 4205:M4205(); break;
+            case 4899:M4899(); break;
+            case 4900:M4900(); break;
           #endif
       #endif
 
@@ -1149,6 +1158,7 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
         if (wifi_custom_command(parser.command_ptr)) break;
       #endif
       parser.unknown_command_warning();
+      break;
   }
 
   #if ENABLED(ANKER_MULTIORDER_PACK)

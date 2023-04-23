@@ -119,6 +119,9 @@ void GcodeSuite::M203() {
  *    T = Travel (non printing) moves
  */
 void GcodeSuite::M204() {
+  const float default_accel   = (planner.LIN_ADV_version_change >= LIN_ADV_VERSION_2) ? LA_V1_DEFAULT_ACCELERATION         : DEFAULT_ACCELERATION;
+  const float default_retract = (planner.LIN_ADV_version_change >= LIN_ADV_VERSION_2) ? LA_V1_DEFAULT_RETRACT_ACCELERATION : DEFAULT_RETRACT_ACCELERATION;
+  const float default_travel  = (planner.LIN_ADV_version_change >= LIN_ADV_VERSION_2) ? LA_V1_DEFAULT_TRAVEL_ACCELERATION  : DEFAULT_TRAVEL_ACCELERATION;
 
   if (!parser.seen("PRST")) {
     SERIAL_ECHOPAIR("Acceleration: P", planner.settings.acceleration);
@@ -133,49 +136,49 @@ void GcodeSuite::M204() {
       if (parser.seenval('S'))
       {
          acc_temp=parser.value_linear_units();
-         if(acc_temp<=DEFAULT_ACCELERATION)
+         if(WITHIN(acc_temp, 0.1, default_accel))
          {
           planner.settings.travel_acceleration = planner.settings.acceleration = acc_temp;
          }
          else
          {
-          planner.settings.travel_acceleration = planner.settings.acceleration = DEFAULT_ACCELERATION;
+          planner.settings.travel_acceleration = planner.settings.acceleration = default_accel;
          }
       }
       if (parser.seenval('P'))
       {
          acc_temp=parser.value_linear_units();
-         if(acc_temp<=DEFAULT_ACCELERATION)
+         if(WITHIN(acc_temp, 0.1, default_accel))
          {
           planner.settings.acceleration = acc_temp;
          }
          else
          {
-          planner.settings.acceleration = DEFAULT_ACCELERATION; 
+          planner.settings.acceleration = default_accel; 
          }
       }
       if (parser.seenval('R'))
       {
          acc_temp=parser.value_linear_units();
-         if(acc_temp<=DEFAULT_RETRACT_ACCELERATION)
+         if(WITHIN(acc_temp, 0.1, default_retract))
          {
           planner.settings.retract_acceleration = acc_temp;
          }
          else
          {
-          planner.settings.retract_acceleration = DEFAULT_RETRACT_ACCELERATION; 
+          planner.settings.retract_acceleration = default_retract; 
          }
       }
       if (parser.seenval('T'))
       {
          acc_temp=parser.value_linear_units();
-         if(acc_temp<=DEFAULT_TRAVEL_ACCELERATION)
+         if(WITHIN(acc_temp, 0.1, default_travel))
          {
           planner.settings.travel_acceleration = acc_temp;
          }
          else
          {
-          planner.settings.travel_acceleration = DEFAULT_TRAVEL_ACCELERATION; 
+          planner.settings.travel_acceleration = default_travel; 
          }
       }
     #else

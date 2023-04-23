@@ -7,8 +7,8 @@
 //M116 M116 S0 Check the firmware version number
 //M116 S1 Check the hardware version number
 //M116 S2 Check the model of the main control chip
-void GcodeSuite::M116() {
-  
+void GcodeSuite::M116() 
+{
   if (parser.seen('S'))
   {
     switch (parser.value_int())
@@ -32,7 +32,9 @@ void GcodeSuite::M116() {
   }
   else
   {
-   SERIAL_ECHOLNPGM(DETAILED_BUILD_VERSION);
+    char tmpbuf[64] = {0};
+    snprintf(tmpbuf, sizeof(tmpbuf), "%s,%s", DETAILED_BUILD_VERSION, board_configure.board_version);
+    SERIAL_ECHOLN(tmpbuf);
   }
 }
 #endif
