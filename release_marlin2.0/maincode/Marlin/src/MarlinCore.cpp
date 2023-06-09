@@ -276,6 +276,10 @@
   #include "feature/anker/anker_homing.h"
 #endif
     
+#if ADAPT_DETACHED_NOZZLE
+#include "feature/interactive/uart_nozzle_rx.h"
+#include "feature/interactive/oci.h"
+#endif
 
 PGMSTR(M112_KILL_STR, "M112 Shutdown");
 
@@ -352,6 +356,8 @@ void enable_e_steppers() {
 
 void enable_all_steppers() {
   TERN_(AUTO_POWER_CONTROL, powerManager.power_on());
+  OUT_WRITE(MOTOR_EN_PIN, HIGH);
+  safe_delay(100);
   ENABLE_AXIS_X();
   ENABLE_AXIS_Y();
   ENABLE_AXIS_Z();
@@ -384,6 +390,8 @@ void disable_all_steppers() {
   DISABLE_AXIS_K();
   disable_e_steppers();
 
+  safe_delay(100);
+  OUT_WRITE(MOTOR_EN_PIN, LOW);
   TERN_(EXTENSIBLE_UI, ExtUI::onSteppersDisabled());
 }
 
@@ -936,10 +944,20 @@ void idle(bool no_stepper_sleep/*=false*/) {
     anker_homing.anker_disable_motton_before_check();
   #endif
 
-  #if ENABLED(PROVE_CONTROL) && ENABLED(ANKER_NOZZLE_BOARD)
-    get_anker_nozzle_board_info()->nozzle_board_deal();
-  #endif
-    
+  if (nozzle_board_type == NOZZLE_TYPE_OLD)
+  {
+      #if ENABLED(PROVE_CONTROL) && ENABLED(ANKER_NOZZLE_BOARD)
+          get_anker_nozzle_board_info()->nozzle_board_deal();
+      #endif
+  }
+  else 
+  {
+      #if ADAPT_DETACHED_NOZZLE
+        uart_nozzle_polling();  
+      #endif
+  }  
+
+
   IDLE_DONE:
   TERN_(MARLIN_DEV_MODE, idle_depth--);
   return;
@@ -1215,16 +1233,22 @@ void setup() {
   #define SETUP_RUN(C) do{ SETUP_LOG(STRINGIFY(C)); C; }while(0)
 
   MYSERIAL1.begin(BAUDRATE);
-  millis_t serial_connect_timeout = millis() + 1000UL;
-  while (!MYSERIAL1.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
+  // millis_t serial_connect_timeout = millis() + 1000UL;
+  // while (!MYSERIAL1.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
+
+  #if ENABLED(ANKERUI)
+    LCD_SERIAL.begin(LCD_BAUDRATE);
+    serial_connect_timeout = millis() + 1000UL;
+    while (!LCD_SERIAL.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
+  #endif
 
   #if HAS_MULTI_SERIAL && !HAS_ETHERNET
     #ifndef BAUDRATE_2
       #define BAUDRATE_2 BAUDRATE
     #endif
     MYSERIAL2.begin(BAUDRATE_2);
-    serial_connect_timeout = millis() + 1000UL;
-    while (!MYSERIAL2.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
+    // serial_connect_timeout = millis() + 1000UL;
+    // while (!MYSERIAL2.connected() && PENDING(millis(), serial_connect_timeout)) { /*nada*/ }
     #if DISABLED(PROVE_CONTROL) && DISABLED(ANKER_NOZZLE_BOARD)
       #ifdef SERIAL_PORT_3
         #ifndef BAUDRATE_3
@@ -1275,6 +1299,11 @@ void setup() {
     #else
       #error "DISABLE_(DEBUG|JTAG) is not supported for the selected MCU/Board."
     #endif
+  #endif
+
+  #if ADAPT_DETACHED_NOZZLE  
+      oci_latch_clear();
+      hw_select();
   #endif
 
   TERN_(DYNAMIC_VECTORTABLE, hook_cpu_exceptions()); // If supported, install Marlin exception handlers at runtime
@@ -1696,6 +1725,8 @@ void setup() {
     ui.check_touch_calibration();
   #endif
   
+  TERN_(ANKERUI,module_task_init());
+
   marlin_state = MF_RUNNING;
 
   #if ENABLED(PROVE_CONTROL) && ENABLED(ANKER_NOZZLE_BOARD)
@@ -1708,7 +1739,7 @@ void setup() {
   
   #if ENABLED(MOTOR_EN_CONTROL)
     pinMode(MOTOR_EN_PIN,OUTPUT);
-    digitalWrite(MOTOR_EN_PIN,MOTOR_EN_STATE);
+    digitalWrite(MOTOR_EN_PIN,!MOTOR_EN_STATE);
   #endif
   
   #if HEATER_EN_CONTROL&&HANDSHAKE==0
@@ -1741,6 +1772,11 @@ void setup() {
   #endif
 
   SETUP_LOG("setup() completed.");
+
+#if ADAPT_DETACHED_NOZZLE    
+  uart_nozzle_init();
+  oci_init();
+#endif
 }
 
 /**

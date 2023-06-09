@@ -48,7 +48,7 @@
 /*******************************Functional API Configuration****************************/
 #if MACCHINE == MOTOR_5X_DVT
     #ifndef SHORT_BUILD_VERSION
-     #define SHORT_BUILD_VERSION            "V8111_V2.0.72"
+     #define SHORT_BUILD_VERSION            "V8111_V3.0.46"
     #endif
     #define ANKER_MAKE_API           1 //gcode
     #define ANKER_GCODE_CHECK        0
@@ -68,7 +68,7 @@
     #define READ_BUFFER_SIZE         1 //read BLOCK_BUFFER_SIZE  MAX_CMD_SIZE  BUFSIZE  
     #define BOARD_CONFIGURE          1 //Used to detect the hardware version number and which chip is used by the hardware
     #define PROBE_TEST               0
-    #define COMPATIBLE_0_2AND_0_3    1 //Compatible with motherboards version 0.2 and 0.3
+    #define COMPATIBLE_0_2AND_0_3    1 //Compatible with mtherboards version 0.2 and 0.3
     #define PHOTO_Z_LAYER            1 //Photo function for each layer
     #define ANKER_PAUSE_FUNC         1 //Anker pause function enable/disable
     #define ANKER_MULTIORDER_PACK    1 //anekr multi order in one packet in once communication
@@ -90,6 +90,9 @@
     #define ANKER_VALIDATE_HOMING_ENDSTOPS 1
     #define ANKER_TEMP_ADC_FILTER    1
     #define ANKER_E_SMOOTH           1
+	#define ADAPT_DETACHED_NOZZLE    1
+    #define ANKER_PROBE_SET          1
+    #define ANKER_PROBE_DETECT_TIMES 1 // Probe multiple times at the same point
 #endif
 
 /*******************************Error detection****************************/

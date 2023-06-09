@@ -1198,7 +1198,17 @@ private:
         static void M3004();
         static void M3005();
         static void M3009();
+        static void M3001_add_on();
+        static void M3002_add_on();
+        static void M3003_add_on();
+      #endif
+      #if ENABLED(ADAPT_DETACHED_NOZZLE)   
         static void M3011();
+        static void M3013();
+        static void M3015();
+        static void M3020();
+        static void M106_add_on();
+        static void M107_add_on();
       #endif
       #if ENABLED(ANKER_MAKE_API)
         static void M4201();

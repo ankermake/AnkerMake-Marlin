@@ -72,6 +72,10 @@
 #if ENABLED (BABYSTEP_DISPLAY_TOTAL)
   #include "../../../feature/babystep.h"
 #endif
+//2021-10-19 harley
+#if ENABLED(ANKERUI)
+ #include "../../../user/marlin_api.h"
+#endif
 
 #ifdef RESTORE_LEVELING_AFTER_G28
   #include "../../../module/settings.h"
@@ -89,7 +93,7 @@
  #include "../../../feature/anker/anker_nozzle_board.h"
 #endif
 
-#if ENABLED(ANKER_MAKE_API)
+#if ENABLED(ANKER_MAKE_API)||ENABLED(ANKERUI)
   uint16_t anker_level_point=0;
 #endif
 
@@ -109,6 +113,10 @@
     #define PR_INNER_VAR  abl.meshCount.x
     #define PR_INNER_SIZE abl.grid_points.x
   #endif
+#endif
+
+#if ADAPT_DETACHED_NOZZLE
+#include "../../../feature/interactive/uart_nozzle_rx.h"
 #endif
 
 #define G29_RETURN(b) return TERN_(G29_RETRY_AND_RECOVER, b)
@@ -245,20 +253,22 @@ public:
  *     Include "E" to engage/disengage the Z probe for each sample.
  *     There's no extra effect if you have a fixed Z probe.
  */
-G29_TYPE GcodeSuite::G29() {
+G29_TYPE GcodeSuite::G29() { 
   DEBUG_SECTION(log_G29, "G29", DEBUGGING(LEVELING));
   
   #if ENABLED(ANKER_NOZZLE_BOARD)
-    get_anker_nozzle_board_info()->serial_disable_state = 1;
+  if (!IS_new_nozzle_board())
+      get_anker_nozzle_board_info()->serial_disable_state = 1;
   #endif
-  #if ENABLED(REPORT_LEVEL_PORT)
+  #if ENABLED(ANKERUI)||ENABLED(REPORT_LEVEL_PORT)
     anker_level_point=0;
   #endif
   #if ENABLED(ANKER_LEVEING)
    // gcode.process_subcommands_now_P(PSTR("M104 S140\nM105\nM109 S140\n"));
   #endif
   #if ENABLED(PROVE_CONTROL)
-    digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+    if (!IS_new_nozzle_board())
+        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
   #endif
   TERN_(PROBE_MANUALLY, static) G29_State abl;
 
@@ -670,7 +680,7 @@ G29_TYPE GcodeSuite::G29() {
         // Inner loop is X with PROBE_Y_FIRST disabled
         for (PR_INNER_VAR = inStart; PR_INNER_VAR != inStop; pt_index++, PR_INNER_VAR += inInc) {
 
-          #if ENABLED(REPORT_LEVEL_PORT)
+          #if ENABLED(ANKERUI)||ENABLED(REPORT_LEVEL_PORT)
              #if ENABLED(ANKER_LEVEING)
                if((anker_level_point%GRID_MAX_POINTS_X==0)||(anker_level_point==0))
                {
@@ -727,12 +737,17 @@ G29_TYPE GcodeSuite::G29() {
             #endif
             //2021-10-18 harley
             ;
+            MYSERIAL2.printLine("likai measured_z = %f, Z_offset = %f, z = %f\n", abl.measured_z, abl.Z_offset, z_values[abl.meshCount.x][abl.meshCount.y]); // likai debug
             TERN_(EXTENSIBLE_UI, ExtUI::onMeshUpdate(abl.meshCount, z));
-              #if ENABLED(REPORT_LEVEL_PORT)
+            //TERN_(ANKER_UI,AnkerUI::levlUpdate(abl.abl_probe_index, z));
+              #if ENABLED(ANKERUI)||ENABLED(REPORT_LEVEL_PORT)
                SERIAL_ECHO("echo:auto_level_index:");
                SERIAL_ECHO(anker_level_point);
                SERIAL_ECHO("\r\n");
                //SERIAL_ECHOPAIR_P("echo:auto_level_index:%d\r\n",anker_level_point);
+              #endif
+              #if ENABLED(ANKERUI)
+               ankerUI.levlUpdate(anker_level_point, z);
               #endif
           #endif
 
@@ -974,7 +989,8 @@ G29_TYPE GcodeSuite::G29() {
   TERN_(FULL_REPORT_TO_HOST_FEATURE, set_and_report_grblstate(M_IDLE));
   
   #if ENABLED(ANKER_NOZZLE_BOARD)
-    get_anker_nozzle_board_info()->serial_disable_state = 0;
+  if (!IS_new_nozzle_board())
+      get_anker_nozzle_board_info()->serial_disable_state = 0;
   #endif
   #ifdef BACKLASH_COMPENSATION
   //2022-06-21 winter

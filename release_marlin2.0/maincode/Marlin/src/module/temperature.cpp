@@ -49,12 +49,21 @@
   #include "../lcd/e3v2/creality/dwin.h"
 #endif
 
+#if ENABLED(ANKERUI)
+  #include "src/user/marlin_api.h"
+#endif
+
 #if ENABLED(EXTENSIBLE_UI)
   #include "../lcd/extui/ui_api.h"
 #endif
 
 #if ENABLED(HOST_PROMPT_SUPPORT)
   #include "../feature/host_actions.h"
+#endif
+
+#if ENABLED(ADAPT_DETACHED_NOZZLE)
+  #include "../feature/interactive/uart_nozzle_rx.h"
+  #include "../feature/interactive/oci.h"
 #endif
 
 #if ENABLED(ANKER_TEMP_WATCH)
@@ -1222,6 +1231,12 @@ void Temperature::_bed_mos2_temp_watch(void)
     }
   }
 }
+
+#define IS_NEW_MARLIN_NEW_NOZZLE  (hw_ver_read() && IS_new_nozzle_board())
+#define IS_NEW_MARLIN_OLD_NOZZLE  (hw_ver_read() && !IS_new_nozzle_board())
+#define IS_OLD_MARLIN_NEW_NOZZLE  (!hw_ver_read() && IS_new_nozzle_board())
+#define IS_OLD_MARLIN_OLD_NOZZLE  (!hw_ver_read() && !IS_new_nozzle_board())
+
 void Temperature::_temp_watch(void)
 {
   static uint8_t report_time_count = 0;
@@ -1236,7 +1251,7 @@ void Temperature::_temp_watch(void)
     {
       disable_all_heaters();
       #if PIN_EXISTS(HEATER_BED_CTRL_2)
-        OUT_WRITE(HEATER_BED_CTRL_2_PIN, !HEATER_BED_CTRL_2_INVERTING);
+        OUT_WRITE(HEATER_BED_CTRL_2_PIN, hw_ver_read() ? HEATER_BED_CTRL_2_INVERTING : !HEATER_BED_CTRL_2_INVERTING);
       #endif
       heater_bed_ctrl2_enable = 0;
       get_anker_nozzle_board_info()->power_off();
@@ -1248,25 +1263,77 @@ void Temperature::_temp_watch(void)
         {
           report_count++;
           MYSERIAL2.printf("temp_watch_error_flag: %#x\r\n", thermalManager.temp_watch_error_flag);
-          if(thermalManager.temp_watch_error_flag & 0x0002)
+          if (IS_OLD_MARLIN_OLD_NOZZLE)
           {
-            MYSERIAL2.printf("TempErrorCode:1001\r\n");
-            MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
+              MYSERIAL2.printLine("OLD_MARLIN_OLD_NOZZLE\n");
+              if(thermalManager.temp_watch_error_flag & 0x0002)
+              {
+                MYSERIAL2.printf("TempErrorCode:1001\r\n");
+                MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
+              }
+              else if(thermalManager.temp_watch_error_flag & 0x0001)
+              {
+                MYSERIAL2.printf("TempErrorCode:1000\r\n");
+                MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
+              }
+              if(thermalManager.temp_watch_error_flag & 0x0020)
+              {
+                MYSERIAL2.printf("TempErrorCode:1012\r\n");
+                MYSERIAL2.printf("Error:Demage:2 bed\r\n");
+              }
+              else if(thermalManager.temp_watch_error_flag & 0x0010)
+              {
+                MYSERIAL2.printf("TempErrorCode:1011\r\n");
+                MYSERIAL2.printf("Error:Demage:1 bed\r\n");
+              }
           }
-          else if(thermalManager.temp_watch_error_flag & 0x0001)
+          else if (IS_OLD_MARLIN_NEW_NOZZLE)
           {
-            MYSERIAL2.printf("TempErrorCode:1000\r\n");
-            MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
+              MYSERIAL2.printLine("OLD_MARLIN_NEW_NOZZLE\n");
+              if(thermalManager.temp_watch_error_flag & 0x0020)
+              {
+                MYSERIAL2.printf("TempErrorCode:1012\r\n");
+                MYSERIAL2.printf("Error:Demage:2 bed\r\n");
+              }
+              else if(thermalManager.temp_watch_error_flag & 0x0010)
+              {
+                MYSERIAL2.printf("TempErrorCode:1011\r\n");
+                MYSERIAL2.printf("Error:Demage:1 bed\r\n");
+              }
           }
-          if(thermalManager.temp_watch_error_flag & 0x0020)
+          else if (IS_NEW_MARLIN_OLD_NOZZLE)
           {
-            MYSERIAL2.printf("TempErrorCode:1012\r\n");
-            MYSERIAL2.printf("Error:Demage:2 bed\r\n");
-          }
-          else if(thermalManager.temp_watch_error_flag & 0x0010)
-          {
-            MYSERIAL2.printf("TempErrorCode:1011\r\n");
-            MYSERIAL2.printf("Error:Demage:1 bed\r\n");
+              MYSERIAL2.printLine("NEW_MARLIN_OLD_NOZZLE\n");
+              if(thermalManager.temp_watch_error_flag & 0x0002)
+              {
+                MYSERIAL2.printf("TempErrorCode:1001\r\n");
+                MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
+              }
+              else if(thermalManager.temp_watch_error_flag & 0x0001)
+              {
+                MYSERIAL2.printf("TempErrorCode:1000\r\n");
+                MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
+              }
+              if(thermalManager.temp_watch_error_flag & 0x0002)
+              {
+                MYSERIAL2.printf("TempErrorCode:1001\r\n");
+                MYSERIAL2.printf("Error:Demage:2 hotend\r\n");
+              }
+              else if(thermalManager.temp_watch_error_flag & 0x0001)
+              {
+                MYSERIAL2.printf("TempErrorCode:1000\r\n");
+                MYSERIAL2.printf("Error:Demage:1 hotend\r\n");
+              }
+              if(thermalManager.temp_watch_error_flag & 0x0020)
+              {
+                MYSERIAL2.printf("TempErrorCode:1012\r\n");
+                MYSERIAL2.printf("Error:Demage:2 bed\r\n");
+              }
+              else if(thermalManager.temp_watch_error_flag & 0x0010)
+              {
+                MYSERIAL2.printf("TempErrorCode:1011\r\n");
+                MYSERIAL2.printf("Error:Demage:1 bed\r\n");
+              }
           }
         }
         else
@@ -1274,20 +1341,42 @@ void Temperature::_temp_watch(void)
            MYSERIAL2.printf("heater off and nozzle power off!\r\n");
         }
       }
-      _hotend_mos2_temp_watch();
-      _bed_mos2_temp_watch();
+      if (IS_OLD_MARLIN_OLD_NOZZLE)
+      {
+          _hotend_mos2_temp_watch();
+          _bed_mos2_temp_watch();
+      }
+      else if  (IS_OLD_MARLIN_NEW_NOZZLE)
+      {
+          _bed_mos2_temp_watch();
+      }
+      else if  (IS_NEW_MARLIN_OLD_NOZZLE)
+      {
+          _hotend_mos2_temp_watch();
+      }
     }
     else
     {
       #if PIN_EXISTS(HEATER_BED_CTRL_2)
         if(heater_bed_ctrl2_enable == 0)
         {
-          OUT_WRITE(HEATER_BED_CTRL_2_PIN, HEATER_BED_CTRL_2_INVERTING);
+          OUT_WRITE(HEATER_BED_CTRL_2_PIN, hw_ver_read() ? !HEATER_BED_CTRL_2_INVERTING : HEATER_BED_CTRL_2_INVERTING);
           heater_bed_ctrl2_enable = 1;
         }
       #endif
-       _hotend_temp_watch();
-       _bed_temp_watch();
+      if (IS_OLD_MARLIN_OLD_NOZZLE)
+      {
+          _hotend_temp_watch();
+          _bed_temp_watch();
+      }
+      else if  (IS_OLD_MARLIN_NEW_NOZZLE)
+      {
+          _bed_temp_watch();
+      }
+      else if  (IS_NEW_MARLIN_OLD_NOZZLE)
+      {
+          _hotend_temp_watch();
+      }
       report_time_count = 0;
       report_count = 0;
       hotend_mos2_temp_watch_deal_step = 0;
@@ -1806,10 +1895,14 @@ void Temperature::bed_temp_shock_process(void)
 }
 void Temperature::temp_protect_process(void)
 {
-  // hotend_temp_heating_process();
-  hotend_temp_slide_window_process();
-  hotend_segmentation_heating_process();
-  hotend_temp_shock_process();
+  if (!IS_new_nozzle_board())
+  {
+      // hotend_temp_heating_process();
+      hotend_temp_slide_window_process();
+      hotend_segmentation_heating_process();
+      hotend_temp_shock_process();
+  }
+
   // bed_temp_heating_process();
   bed_temp_slide_window_process();
   bed_temp_shock_process();
@@ -1818,6 +1911,12 @@ void Temperature::temp_protect_process(void)
 void Temperature::_temp_error(const heater_id_t heater_id, PGM_P const serial_msg, PGM_P const lcd_msg) {
 
   static uint8_t killed = 0;
+
+  if (hw_ver_read())
+  {
+    OUT_WRITE(NOZZLE_BOARD_PWR_PIN, !NOZZLE_BOARD_PWR_STATE); // power off nozzle
+    MYSERIAL2.printf("temp error power off\n");
+  }
 
   if (IsRunning() && TERN1(BOGUS_TEMPERATURE_GRACE_PERIOD, killed == 2)) {
     SERIAL_ERROR_START();
@@ -1870,6 +1969,16 @@ void Temperature::_temp_error(const heater_id_t heater_id, PGM_P const serial_ms
   #else
     if (!killed) { killed = 1; loud_kill(lcd_msg, heater_id); }
   #endif
+}
+
+void Temperature::heater_temp_error(const heater_id_t heater_id)
+{
+  _temp_error(heater_id, STR_T_HEATING_FAILED, GET_TEXT(MSG_HEATING_FAILED_LCD));
+}
+
+void Temperature::heater_temp_runaway(const heater_id_t heater_id)
+{
+  _temp_error(heater_id, STR_T_THERMAL_RUNAWAY, GET_TEXT(MSG_THERMAL_RUNAWAY));
 }
 
 void Temperature::max_temp_error(const heater_id_t heater_id) {
@@ -2135,7 +2244,8 @@ void Temperature::manage_heater() {
   if (marlin_state == MF_INITIALIZING) return watchdog_refresh(); // If Marlin isn't started, at least reset the watchdog!
 
   #if ENABLED(ANKER_TEMP_WATCH)
-    _temp_watch();
+  if (!IS_NEW_MARLIN_NEW_NOZZLE)
+      _temp_watch();
   #endif
 
   static bool no_reentry = false;  // Prevent recursion
@@ -2214,7 +2324,14 @@ void Temperature::manage_heater() {
         tr_state_machine[e].run(temp_hotend[e].celsius, temp_hotend[e].target, (heater_id_t)e, THERMAL_PROTECTION_PERIOD, THERMAL_PROTECTION_HYSTERESIS);
       #endif
 
-      temp_hotend[e].soft_pwm_amount = (temp_hotend[e].celsius > temp_range[e].mintemp || is_preheating(e)) && temp_hotend[e].celsius < temp_range[e].maxtemp ? (int)get_pid_output_hotend(e) >> 1 : 0;
+      #if ADAPT_DETACHED_NOZZLE
+      if (IS_new_nozzle_board())
+          temp_hotend[e].soft_pwm_amount = 0;
+      else
+          temp_hotend[e].soft_pwm_amount = (temp_hotend[e].celsius > temp_range[e].mintemp || is_preheating(e)) && temp_hotend[e].celsius < temp_range[e].maxtemp ? (int)get_pid_output_hotend(e) >> 1 : 0;
+      #else
+          temp_hotend[e].soft_pwm_amount = (temp_hotend[e].celsius > temp_range[e].mintemp || is_preheating(e)) && temp_hotend[e].celsius < temp_range[e].maxtemp ? (int)get_pid_output_hotend(e) >> 1 : 0;
+      #endif
 
       #if WATCH_HOTENDS
         // Make sure temperature is increasing
@@ -2960,9 +3077,16 @@ void Temperature::updateTemperaturesFromRawValues() {
   TERN_(TEMP_SENSOR_1_IS_MAX_TC, temp_hotend[1].raw = READ_MAX_TC(1));
   TERN_(TEMP_SENSOR_REDUNDANT_IS_MAX_TC, temp_redundant.raw = READ_MAX_TC(HEATER_ID(TEMP_SENSOR_REDUNDANT_SOURCE)));
 
-  #if HAS_HOTEND
+#if ADAPT_DETACHED_NOZZLE
+  if (IS_new_nozzle_board()){
+      temp_hotend[0].raw = 0;// ?
+  }else
+#endif
+  {
+    #if HAS_HOTEND
     HOTEND_LOOP() temp_hotend[e].celsius = analog_to_celsius_hotend(temp_hotend[e].raw, e);
-  #endif
+    #endif
+  }
 
   TERN_(HAS_HEATED_BED,     temp_bed.celsius       = analog_to_celsius_bed(temp_bed.raw));
   TERN_(HAS_TEMP_CHAMBER,   temp_chamber.celsius   = analog_to_celsius_chamber(temp_chamber.raw));
@@ -2994,7 +3118,9 @@ void Temperature::updateTemperaturesFromRawValues() {
       #endif
     };
 
-    LOOP_L_N(e, COUNT(temp_dir)) {
+    if (nozzle_board_type == NOZZLE_TYPE_OLD)
+    {
+      LOOP_L_N(e, COUNT(temp_dir)) {
       const int8_t tdir = temp_dir[e];
       if (tdir) {
         const int16_t rawtemp = temp_hotend[e].raw * tdir; // normal direction, +rawtemp, else -rawtemp
@@ -3037,7 +3163,7 @@ void Temperature::updateTemperaturesFromRawValues() {
         #endif
       }
     }
-
+  }
   #endif // HAS_HOTEND
 
   #define TP_CMP(S,A,B) (TEMPDIR(S) < 0 ? ((A)<(B)) : ((A)>(B)))
@@ -3191,7 +3317,7 @@ void Temperature::init() {
 
   #if HAS_HEATER_0
     #ifdef BOARD_OPENDRAIN_MOSFETS
-      OUT_WRITE_OD(HEATER_0_PIN, HEATER_0_INVERTING);
+      OUT_WRITE_OD(HEATER_0_PIN, hw_ver_read() ? !HEATER_0_INVERTING : HEATER_0_INVERTING);
     #else
       OUT_WRITE(HEATER_0_PIN, HEATER_0_INVERTING);
     #endif
@@ -3613,7 +3739,10 @@ void Temperature::disable_all_heaters() {
 
   #if HAS_TEMP_HOTEND
     #define DISABLE_HEATER(N) WRITE_HEATER_##N(LOW);
-    REPEAT(HOTENDS, DISABLE_HEATER);
+    if (nozzle_board_type == NOZZLE_TYPE_OLD)
+    {
+        REPEAT(HOTENDS, DISABLE_HEATER);
+    }
   #endif
 
   #if HAS_HEATED_BED
@@ -4036,7 +4165,8 @@ void Temperature::isr() {
 
       #if HAS_HOTEND
         #define _PWM_MOD_E(N) _PWM_MOD(N,soft_pwm_hotend[N],temp_hotend[N]);
-        REPEAT(HOTENDS, _PWM_MOD_E);
+        if (nozzle_board_type == NOZZLE_TYPE_OLD)
+            REPEAT(HOTENDS, _PWM_MOD_E);
       #endif
 
       #if HAS_HEATED_BED
@@ -4087,7 +4217,10 @@ void Temperature::isr() {
       #define _PWM_LOW(N,S) do{ if (S.count <= pwm_count_tmp) WRITE_HEATER_##N(LOW); }while(0)
       #if HAS_HOTEND
         #define _PWM_LOW_E(N) _PWM_LOW(N, soft_pwm_hotend[N]);
-        REPEAT(HOTENDS, _PWM_LOW_E);
+        if (nozzle_board_type == NOZZLE_TYPE_OLD)
+        {
+            REPEAT(HOTENDS, _PWM_LOW_E);
+        }
       #endif
 
       #if HAS_HEATED_BED
