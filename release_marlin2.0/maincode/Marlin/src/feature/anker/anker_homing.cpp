@@ -7,6 +7,10 @@
  */
 #include "anker_homing.h"
 #include "../bedlevel/bedlevel.h"
+#if ADAPT_DETACHED_NOZZLE
+ #include "../interactive/uart_nozzle_tx.h"
+ #include "../interactive/uart_nozzle_rx.h"
+#endif
 #if ENABLED(EVT_HOMING_5X)
 
   Anker_Homing anker_homing;
@@ -64,11 +68,17 @@
             do_blocking_move_to(first_z2_pos, feedRate_t(XY_PROBE_FEEDRATE_MM_S));              
           }
 
-           set_anker_z_sensorless_probe_value(800);
+           if (nozzle_board_type == NOZZLE_TYPE_OLD)
+               set_anker_z_sensorless_probe_value(800);
+           else
+               uart_nozzle_tx_probe_val(800);
+
           #if ENABLED(PROVE_CONTROL)
-            digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+            if (!IS_new_nozzle_board())
+                digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
             probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING);
-            digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
+            if (!IS_new_nozzle_board())
+                digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
           #endif
           for(u_int16_t i=0;i<(DUAL_Z_NOZZLE_BELOW_BED_MM/DUAL_Z_NOZZLE_BELOW_BED_STEP_MM);i++)
           {
@@ -111,7 +121,8 @@
            
             
           #if ENABLED(PROVE_CONTROL)
-            digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+          if (!IS_new_nozzle_board())
+              digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
           #endif
           reset_anker_z_sensorless_probe_value();
         }

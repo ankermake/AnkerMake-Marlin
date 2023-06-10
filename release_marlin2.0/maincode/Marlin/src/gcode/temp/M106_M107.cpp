@@ -94,6 +94,9 @@ void GcodeSuite::M106() {
 
   if (TERN0(DUAL_X_CARRIAGE, idex_is_duplicating()))  // pfan == 0 when duplicating
     thermalManager.set_fan_speed(1 - pfan, speed);
+
+  if (pfan == 1)
+    M106_add_on();
 }
 
 /**
@@ -112,6 +115,9 @@ void GcodeSuite::M107() {
     thermalManager.set_fan_speed(1 - pfan, 0);
 
   TERN_(LASER_SYNCHRONOUS_M106_M107, planner.buffer_sync_block(BLOCK_FLAG_SYNC_FANS));
+
+  if (pfan == 1)
+    M107_add_on();
 }
 
 #endif // HAS_FAN

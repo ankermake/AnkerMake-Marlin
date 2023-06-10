@@ -170,6 +170,9 @@
   #include "../feature/anker/anker_z_sensorless.h"
 #endif
 
+#if ADAPT_DETACHED_NOZZLE
+  #include "../feature/interactive/uart_nozzle_rx.h"
+#endif
 #pragma pack(push, 1) // No padding between variables
 
 #if HAS_ETHERNET
@@ -2770,8 +2773,14 @@ void MarlinSettings::reset() {
   TERN_(HAS_LEVELING, reset_bed_level());
 
   #if HAS_BED_PROBE
-    constexpr float dpo[] = NOZZLE_TO_PROBE_OFFSET;
-    static_assert(COUNT(dpo) == LINEAR_AXES, "NOZZLE_TO_PROBE_OFFSET must contain offsets for each linear axis X, Y, Z....");
+    #if (ADAPT_DETACHED_NOZZLE && ENABLED(NOZZLE_AS_PROBE))
+      const float *dpo = Get_NOZZLE_TO_PROBE_OFFSET();
+      //MYSERIAL1.printf("echo: reset-dpo= %3.5f %3.5f %3.5f\r\n", dpo[X_AXIS],dpo[Y_AXIS],dpo[Z_AXIS]);
+    #else
+      constexpr float dpo[] = NOZZLE_TO_PROBE_OFFSET;
+      static_assert(COUNT(dpo) == LINEAR_AXES, "NOZZLE_TO_PROBE_OFFSET must contain offsets for each linear axis X, Y, Z....");
+    #endif
+
     #if HAS_PROBE_XY_OFFSET
       LOOP_LINEAR_AXES(a) probe.offset[a] = dpo[a];
     #else

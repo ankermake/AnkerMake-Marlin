@@ -49,6 +49,10 @@
   #include "../../module/tool_change.h"
 #endif
 
+#if ENABLED(ADAPT_DETACHED_NOZZLE)
+  #include "../../feature/interactive/uart_nozzle_rx.h"
+#endif
+
 /**
  * M104: Set Hotend Temperature target and return immediately
  * M109: Set Hotend Temperature target and wait
@@ -78,9 +82,12 @@ void GcodeSuite::M104_M109(const bool isM109) {
   if (DEBUGGING(DRYRUN)) return;
 
   #if ENABLED(ANKER_TEMP_WATCH)
-    if(thermalManager.temp_watch_is_error())
+    if (nozzle_board_type == NOZZLE_TYPE_OLD)
     {
-      return;
+        if(thermalManager.temp_watch_is_error())
+        {
+          return;
+        }
     }
   #endif
 

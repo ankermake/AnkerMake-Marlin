@@ -2,15 +2,18 @@
  * @Author       : winter
  * @Date         : 2022-05-24 14:08:20
  * @LastEditors: winter.tian
- * @LastEditTime: 2023-04-23 20:41:15
+ * @LastEditTime: 2023-04-12 11:57:22
  * @Description  :
  */
 #include "../../inc/MarlinConfig.h"
 #include "../gcode.h"
 #include "../../module/settings.h"
+#include "../../module/temperature.h"
 
 #if ENABLED(ANKER_NOZZLE_BOARD)
 #include "../../feature/anker/anker_nozzle_board.h"
+#include "../../feature/interactive/uart_nozzle_tx.h"
+#include "../../feature/interactive/uart_nozzle_rx.h"
 
 #if 0
 // #define ADDR_FLASH_SECTOR_0     ((u32)0x08000000) 	//16 Kbytes
@@ -125,28 +128,44 @@ static unsigned int crc32(const unsigned char *buf, unsigned int size)
 
 void GcodeSuite::M3001()
 {
-  anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
+    if (IS_new_nozzle_board())
+    {
+        M3001_add_on();
+        return;
+    }
 
-  if (p_info->read_threshold_flag == 1)
-  {
-    p_info->tx_ring_buf_add((char *)"M3001");
-  }
+    anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
+
+    if (p_info->read_threshold_flag == 1)
+    {
+        p_info->tx_ring_buf_add((char *)"M3001");
+    }
 }
 
 void GcodeSuite::M3002()
 {
-  anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
+    if (IS_new_nozzle_board())
+    {
+        M3002_add_on();
+        return;
+    }
+    anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
 
-  if (p_info->read_threshold_flag == 1)
-  {
-    p_info->tx_ring_buf_add((char *)"M3002");
-  }
+    if (p_info->read_threshold_flag == 1)
+    {
+        p_info->tx_ring_buf_add((char *)"M3002");
+    }
 }
 
 // M3003 get nozzle board threshold
 // M3003 V200 set nozzle board threshold
 void GcodeSuite::M3003()
 {
+    if (IS_new_nozzle_board())
+    {
+        M3003_add_on();
+        return;
+    }
   anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
   char tmp_buf[ANKER_NOZZLE_BOARD_TX_BUF_SIZE] = {0};
   bool is_set_threshold = false;
@@ -290,35 +309,6 @@ void GcodeSuite::M3009()
   }
 }
 
-//=>M3011 S0/S1
-//<=ANKER_V8111_HW_V1.0.0_SW_V1.0.0
-void GcodeSuite::M3011()
-{
-  int16_t num = 0;
-
-  if (parser.seen('S'))
-  {
-    num = parser.value_int();
-
-    switch(num)
-    {
-      case 0:
-      {
-        SERIAL_ECHOPAIR("ANKER_V8111_BOOT_V0.0.0\r\n");
-        break;
-      }
-      case 1:
-      {
-        SERIAL_ECHOPAIR("ANKER_V8111_HW_V0.0.0_SW_V0.0.0\r\n");
-        break;
-      }
-      default:
-      {
-        break;
-      }
-    }
-  }
-}
 #if 0
 static bool flash_sector_read(uint32_t addr, uint32_t *data)
 {

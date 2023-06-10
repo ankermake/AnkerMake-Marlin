@@ -2602,7 +2602,11 @@
 //
 // Additional options for DGUS / DWIN displays
 //
-
+//#define ANKERUI
+#if ENABLED(ANKERUI) 
+  #define LCD_SERIAL_PORT 3
+  #define LCD_BAUDRATE 115200
+#endif
 //
 // Touch-screen LCD for Malyan M200/M300 printers
 //

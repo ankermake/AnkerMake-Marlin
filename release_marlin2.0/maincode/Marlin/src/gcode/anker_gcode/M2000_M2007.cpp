@@ -9,9 +9,15 @@
 #include "../../module/stepper.h"
 #include "../../module/endstops.h"
 
+#if ADAPT_DETACHED_NOZZLE
+#include "../../feature/interactive/uart_nozzle_rx.h"
+#endif
+
 #if ENABLED(PROVE_CONTROL)
     
 void GcodeSuite::M2000() {
+    if (IS_new_nozzle_board())
+        return;
     if (parser.seen('S'))
     {
        if(parser.value_bool())

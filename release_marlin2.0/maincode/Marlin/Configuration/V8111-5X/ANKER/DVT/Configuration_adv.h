@@ -426,7 +426,7 @@
 
 // Show Temperature ADC value
 // Enable for M105 to include ADC values read from temperature sensors.
-//#define SHOW_TEMP_ADC_VALUES
+// #define SHOW_TEMP_ADC_VALUES
 
 /**
  * High Temperature Thermistor Support
@@ -2993,6 +2993,12 @@
         #define TCOOLTHRS_Z1   1000
         #define TCOOLTHRS_Z2   1000 
     #endif
+
+    // Delay Sensorless Homing/Probing
+    #if !defined(SENSORLESS_STALLGUARD_DELAY)
+      #define SENSORLESS_STALLGUARD_DELAY 200
+    #endif
+
   #endif
 
   /**

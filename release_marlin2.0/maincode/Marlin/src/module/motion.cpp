@@ -83,6 +83,14 @@
   #include "../feature/anker/anker_homing.h"
 #endif
 
+#if ENABLED(ANKER_PROBE_SET)
+  #include "../feature/anker/anker_z_offset.h"
+#endif
+
+#if ENABLED(ADAPT_DETACHED_NOZZLE)
+#include "../feature/interactive/uart_nozzle_rx.h"
+#endif
+
 #define DEBUG_OUT ENABLED(DEBUG_LEVELING_FEATURE)
 #include "../core/debug_out.h"
 
@@ -1653,17 +1661,21 @@ void prepare_line_to_destination() {
               #if ENABLED(WS1_HOMING_5X) 
                   if(is_anker_safely_delay)
                     {
-                      digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+                       if (!IS_new_nozzle_board())
+                          digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
                        if(anker_leve_pause)
-                        probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING_TRUE);
+                          probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING_TRUE);
                        else
-                        probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING);
-                      digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
+                          probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING);
+                       if (!IS_new_nozzle_board())
+                          digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
                     } 
               #else
-                    digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+                    if (!IS_new_nozzle_board())
+                        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
                     probe.set_probing_paused(true);
-                    digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
+                    if (!IS_new_nozzle_board())
+                        digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
               #endif
              
             #else
@@ -1673,6 +1685,7 @@ void prepare_line_to_destination() {
 
       // Disable stealthChop if used. Enable diag1 pin on driver.
       TERN_(SENSORLESS_HOMING, stealth_states = start_sensorless_homing_per_axis(axis));
+      TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
     }
 
     #if EITHER(MORGAN_SCARA, MP_SCARA)
@@ -1716,6 +1729,7 @@ void prepare_line_to_destination() {
 
       // Re-enable stealthChop if used. Disable diag1 pin on driver.
       TERN_(SENSORLESS_HOMING, end_sensorless_homing_per_axis(axis, stealth_states));
+      TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
     }
   }
   
@@ -1737,12 +1751,14 @@ void prepare_line_to_destination() {
     if (is_home_dir) {
         if(is_anker_safely_delay)
           {
-            digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+              if (!IS_new_nozzle_board())
+                  digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
               if(anker_leve_pause)
               probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING_TRUE);
               else
               probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING);
-            digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
+              if (!IS_new_nozzle_board())
+                  digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
           } 
     }
 
@@ -1956,6 +1972,7 @@ void prepare_line_to_destination() {
       probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING_TRUE);
       // Disable stealthChop if used. Enable diag1 pin on driver.
       TERN_(SENSORLESS_HOMING, stealth_states = start_sensorless_homing_per_axis(axis));
+      TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
     }
 
 
@@ -1978,6 +1995,7 @@ void prepare_line_to_destination() {
 
       // Re-enable stealthChop if used. Disable diag1 pin on driver.
       TERN_(SENSORLESS_HOMING, end_sensorless_homing_per_axis(axis, stealth_states));
+      TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
     }
 
    #if ENABLED(USE_Z_SENSORLESS)
@@ -2237,7 +2255,8 @@ void prepare_line_to_destination() {
           anker_homing.set_first_end_z_axis(Z_AXIS_IDLE);
          #endif
           #if ENABLED(ANKER_NOZZLE_BOARD)
-            get_anker_nozzle_board_info()->serial_disable_state = 1;
+          if (!IS_new_nozzle_board())
+              get_anker_nozzle_board_info()->serial_disable_state = 1;
           #endif
       }
     #endif
@@ -2597,6 +2616,7 @@ void prepare_line_to_destination() {
 
   int Probe_homeaxis(const AxisEnum axis,uint8_t anker_homing) {
 
+    int error_status = 1;
     #if EITHER(MORGAN_SCARA, MP_SCARA)
       // Only Z homing (with probe) is permitted
       if (axis != Z_AXIS) { BUZZ(100, 880); return; }
@@ -2642,10 +2662,16 @@ void prepare_line_to_destination() {
     if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("probe_Home Fast: ", move_length, "mm");
     //do_homing_move(axis, move_length, 0.0, !use_probe_bump);
 
+    #if ENABLED(ANKER_PROBE_SET)
+      anker_probe_set.probe_start(anker_probe_set.leveing_value);
+      // anker_probe_set.probe_start(0);
+    #endif
+
     if(anker_do_probe_homing_move(axis, move_length, MMM_TO_MMS(Z_PROBE_FEEDRATE_FAST), !use_probe_bump))
     {
       #if ENABLED(PROVE_CONTROL)
-      digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+      if (!IS_new_nozzle_board())
+          digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
       #endif
       set_axis_is_at_home(axis);
       sync_plan_position();
@@ -2653,12 +2679,14 @@ void prepare_line_to_destination() {
       probe.anker_stow();
        return 0;
     }
-
+    float probe_first =  planner.triggered_position_mm(_AXIS(Z));
+    MYSERIAL1.printf("Z homing first=%f\n", probe_first);
     #if BOTH(HOMING_Z_WITH_PROBE, BLTOUCH_SLOW_MODE)
       if (axis == Z_AXIS) bltouch.stow(); // Intermediate STOW (in LOW SPEED MODE)
     #endif
      #if ENABLED(PROVE_CONTROL)
-     digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+     if (!IS_new_nozzle_board())
+         digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
      #endif
     // If a second homing move is configured...
     if (bump) {
@@ -2670,7 +2698,8 @@ void prepare_line_to_destination() {
       {
         MYSERIAL2.printf("probe: homeaxis signal error!\r\n");
         #if ENABLED(PROVE_CONTROL)
-        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+        if (!IS_new_nozzle_board())
+            digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
         #endif
         set_axis_is_at_home(axis);
         sync_plan_position();
@@ -2706,18 +2735,69 @@ void prepare_line_to_destination() {
       #if BOTH(HOMING_Z_WITH_PROBE, BLTOUCH_SLOW_MODE)
         if (axis == Z_AXIS && bltouch.deploy()) return; // Intermediate DEPLOY (in LOW SPEED MODE)
       #endif
+      #if ENABLED(ANKER_PROBE_SET)
+      if((anker_probe_set.auto_run_flag)&&(anker_homing==2))
+      {
+          anker_probe_set.auto_run_send_start_info();
+      }
+      else
+      {
+          anker_probe_set.probe_start(anker_probe_set.leveing_value);
+          // anker_probe_set.probe_start(1);
+      }
+      #endif
       // Slow move towards endstop until triggered
       const float rebump = bump * 2;
       if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("probe_Re-bump: ", rebump, "mm");
-      anker_do_probe_homing_move(axis, rebump, get_homing_bump_feedrate(axis), true);
+
+      #if ENABLED(ANKER_PROBE_DETECT_TIMES)
+        if (axis == Z_AXIS){
+          uint8_t count_flag = 5; // The maximum number of consecutive attempts
+          const float Z_probe_deviation = TERN(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board() ? NOZZLE_TYPE_NEW_Z_PROBE_DETECTION_DEVIATION : Z_PROBE_DETECTION_DEVIATION, Z_PROBE_DETECTION_DEVIATION);
+          safe_delay(200);
+          do{
+            if (anker_do_probe_homing_move(axis, rebump, get_homing_bump_feedrate(axis), true)) {// timer out!!! move up and try again
+              anker_do_probe_homing_move(axis, -bump, TERN(HOMING_Z_WITH_PROBE, (axis == Z_AXIS ? MMM_TO_MMS(HOMING_RISE_SPEED) : 0), 0), false);
+              continue;
+            }
+            float probe_second =  planner.triggered_position_mm(_AXIS(Z));
+            //MYSERIAL1.printf("echo: Z homing try:%d Probe Z at:%3.5f diff:%3.5f\r\n", (uint8_t)(5-count_flag), probe_second, ABS((probe_first - probe_second)));
+            MYSERIAL2.printf("echo: Z homing try:%d Probe Z at:%3.5f diff:%3.5f %3.5f\r\n", (uint8_t)(5-count_flag), probe_second, ABS((probe_first - probe_second)), planner.get_axis_position_mm(Z_AXIS));
+            if(ABS(probe_first - probe_second) < Z_probe_deviation)
+              {break;} // OK!
+            else{ // move up and try again
+              if(--count_flag){
+                probe_first = probe_second;
+                anker_do_probe_homing_move(axis, -bump, TERN(HOMING_Z_WITH_PROBE, (axis == Z_AXIS ? MMM_TO_MMS(HOMING_RISE_SPEED) : 0), 0), false);
+                #if ENABLED(ANKER_PROBE_SET)
+                anker_probe_set.probe_start(anker_probe_set.leveing_value);
+                safe_delay(200);
+                #endif
+              }else{
+                break;
+              }
+            }
+          }while(count_flag > 0);
+
+          if(count_flag == 0 && TERN1(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board())) {error_status = 0;} // error!!! try homing again. Only try on new_nozzle_board.
+          if(count_flag == 0) MYSERIAL2.printf("ERR CHECK HOMING----echo: num:%d Probe Z:%3.5f %3.5f\r\n", (uint8_t)(5-count_flag), current_position.z, planner.get_axis_position_mm(Z_AXIS));
+        }else{
+          anker_do_probe_homing_move(axis, rebump, get_homing_bump_feedrate(axis), true);
+        }
+      #else // ! ENABLED(ANKER_PROBE_DETECT_TIMES)
+        anker_do_probe_homing_move(axis, rebump, get_homing_bump_feedrate(axis), true);
+      #endif
 
       #if BOTH(HOMING_Z_WITH_PROBE, BLTOUCH)
         if (axis == Z_AXIS) bltouch.stow(); // The final STOW
       #endif
       #if ENABLED(PROVE_CONTROL)
-       digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+      if (!IS_new_nozzle_board())
+          digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
       #endif
     }
+    
+     MYSERIAL2.printf("echo: ERR CHECK HOMING----Probe Z:%3.5f\r\n", planner.triggered_position_mm(_AXIS(Z)));
 
     set_axis_is_at_home(axis);
 
@@ -2728,7 +2808,8 @@ void prepare_line_to_destination() {
     // Put away the Z probe
     #if HOMING_Z_WITH_PROBE
        #if ENABLED(PROVE_CONTROL)
-       digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+       if (!IS_new_nozzle_board())
+           digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
        #endif
       if (axis == Z_AXIS && probe.anker_stow()) return 2;
     #endif
@@ -2737,7 +2818,7 @@ void prepare_line_to_destination() {
     //   anker_align.run_align();
     // #endif
     if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("<<< probe_homeaxis(", AS_CHAR(AXIS_CHAR(axis)), ")");
-    return 1;
+    return error_status;
   } // homeaxis()
  #else
   void homeaxis(const AxisEnum axis) {
@@ -2834,7 +2915,8 @@ void prepare_line_to_destination() {
     #endif
 
     #if ENABLED(PROVE_CONTROL)
-      digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+    if (!IS_new_nozzle_board())
+        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
     #endif
 
     // If a second homing move is configured...
@@ -2880,7 +2962,8 @@ void prepare_line_to_destination() {
         if (axis == Z_AXIS) bltouch.stow(); // The final STOW
       #endif
       #if ENABLED(PROVE_CONTROL)
-        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+      if (!IS_new_nozzle_board())
+          digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
       #endif
     }
 
@@ -3058,7 +3141,8 @@ void prepare_line_to_destination() {
     // Put away the Z probe
     #if HOMING_Z_WITH_PROBE
        #if ENABLED(PROVE_CONTROL)
-        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+       if (!IS_new_nozzle_board())
+            digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
        #endif
       if (axis == Z_AXIS && probe.stow()) return;
     #endif

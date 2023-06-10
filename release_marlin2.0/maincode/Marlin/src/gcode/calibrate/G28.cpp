@@ -77,6 +77,10 @@
  #include "../../feature/anker/anker_homing.h"
 #endif
 
+#if ADAPT_DETACHED_NOZZLE
+#include "../../feature/interactive/uart_nozzle_rx.h"
+#endif
+
 #if ENABLED(QUICK_HOME)
 
   static void quick_home_xy() {
@@ -164,7 +168,8 @@
       TERN_(SENSORLESS_HOMING, safe_delay(500)); // Short delay needed to settle
 
       #if ENABLED(PROVE_CONTROL)
-        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+      if (!IS_new_nozzle_board())
+          digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
       #endif
       #if ENABLED(EVT_HOMING_5X)
         if(anker_homing.is_home_z) 
@@ -176,11 +181,13 @@
               stepperZ.rms_current(Z_STALL_CURRENT);
               const int16_t ltmc_save_current_Z2 = stepperZ2.getMilliamps();
               stepperZ2.rms_current(Z2_STALL_CURRENT);
+              TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
           #endif
           homeaxis(Z_AXIS);
           #if ENABLED(USE_Z_SENSORLESS)
               stepperZ.rms_current(ltmc_save_current_Z);
               stepperZ2.rms_current(ltmc_save_current_Z2);
+              TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
           #endif
           #endif
         }
@@ -198,7 +205,8 @@
       #endif
       
       #if ENABLED(PROVE_CONTROL)
-       digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+      if (!IS_new_nozzle_board())
+         digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
       #endif
     }
     else {
@@ -246,7 +254,8 @@
       TERN_(SENSORLESS_HOMING, safe_delay(500)); // Short delay needed to settle
 
       #if ENABLED(PROVE_CONTROL)
-        digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+      if (!IS_new_nozzle_board())
+          digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
       #endif
       anker_homing.is_clean=false;
      
@@ -259,11 +268,13 @@
             stepperZ.rms_current(Z_STALL_CURRENT);
             const int16_t tmc_save_current_Z2 = stepperZ2.getMilliamps();
             stepperZ2.rms_current(Z2_STALL_CURRENT);
+            TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
           #endif
           homeaxis(Z_AXIS);
           #if ENABLED(USE_Z_SENSORLESS)
             stepperZ.rms_current(tmc_save_current_Z);
             stepperZ2.rms_current(tmc_save_current_Z2);
+            TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
           #endif
         #endif
          do_blocking_move_to_xy(destination);
@@ -377,6 +388,7 @@ void GcodeSuite::G28() {
      const int16_t tmc_save_current_Y = stepperY.getMilliamps();
      stepperY.rms_current(Y_STALL_CURRENT);
      gcode.process_subcommands_now_P(PSTR("M569 S1 X Y\nM913 X251 Y251\n"));
+	 TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
   #endif
 
   TERN_(DWIN_CREALITY_LCD, DWIN_StartHoming());
@@ -437,6 +449,7 @@ void GcodeSuite::G28() {
       stepperZ.rms_current(Z_CURRENT_HOME);
       if (DEBUGGING(LEVELING)) debug_current(PSTR("Z"), tmc_save_current_Z, Z_CURRENT_HOME);
     #endif
+    TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
   #endif
 
   #if ENABLED(IMPROVE_HOMING_RELIABILITY)
@@ -566,6 +579,7 @@ void GcodeSuite::G28() {
       gcode.process_subcommands_now_P(PSTR("M569 S0 X Y\nM913 X0 Y0\n"));
       stepperX.rms_current(tmc_save_current_X);
       stepperY.rms_current(tmc_save_current_Y);
+      TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
     #endif
 
     // Home Z last if homing towards the bed
@@ -686,6 +700,7 @@ void GcodeSuite::G28() {
     #if HAS_CURRENT_HOME(K)
       stepperK.rms_current(tmc_save_current_K);
     #endif
+    TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
   #endif // HAS_HOMING_CURRENT
 
   ui.refresh();
@@ -759,7 +774,8 @@ void GcodeSuite::G28() {
   #endif
 
   #if ENABLED(ANKER_NOZZLE_BOARD)
-    get_anker_nozzle_board_info()->serial_disable_state = 0;
+  if (!IS_new_nozzle_board())
+      get_anker_nozzle_board_info()->serial_disable_state = 0;
   #endif
 }
 

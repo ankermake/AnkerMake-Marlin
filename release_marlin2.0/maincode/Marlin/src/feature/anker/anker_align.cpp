@@ -13,6 +13,9 @@
   #include "../../module/probe.h"
   #include "../../gcode/gcode.h"
   #include "../../module/temperature.h"
+  #if ENABLED(ADAPT_DETACHED_NOZZLE)
+   #include "../interactive/uart_nozzle_rx.h"
+  #endif 
 
   Anker_Align anker_align;
     
@@ -86,6 +89,7 @@
      uint16_t num=0;
      is_g36_cmd_executing = true;
      const ProbePtRaise raise_after =  PROBE_PT_RAISE;
+     const float __align_allowed = TERN(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board() ? NOZZLE_TYPE_NEW_ANLIGN_ALLOWED : ANLIGN_ALLOWED, ANLIGN_ALLOWED);
      anker_align.init();
      gcode.process_subcommands_now_P(PSTR("G28"));
      for(num=0;num<ANLIGN_NUM;num++)
@@ -123,7 +127,7 @@
             SERIAL_ERROR_MSG(STR_ERR_PROBING_FAILED);
             kill();
          }
-         if(ABS(z1-z2)<=ANLIGN_ALLOWED)
+         if(ABS(z1-z2) <= __align_allowed)
          {
             anker_align.eeprom_z1_value = anker_align.z1_value;
             anker_align.eeprom_z2_value = anker_align.z2_value;
@@ -150,7 +154,7 @@
 
          if(num==(ANLIGN_NUM-1))
          {
-           if(ABS(z1-z2)>ANLIGN_ALLOWED)
+           if(ABS(z1-z2) > __align_allowed)
            {
                SERIAL_ECHO("echo:Please check the Z-axis limit!\r\n");
                anker_align.reset();

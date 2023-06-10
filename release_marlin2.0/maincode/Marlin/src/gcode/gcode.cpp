@@ -1116,12 +1116,17 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
           #if ENABLED(ANKER_NOZZLE_BOARD)
             case 3001: M3001(); break;
             case 3002: M3002(); break;
-            case 3003: M3003(); break; 
+            case 3003: M3003(); break;
             case 3004: M3004(); break;
             case 3005: M3005(); break;
             case 3009: M3009(); break;
-            case 3011: M3011(); break;
           #endif
+          #if ENABLED(ADAPT_DETACHED_NOZZLE)
+            case 3011: M3011();break;
+            case 3013: M3013();break;
+            case 3015: M3015();break;
+            case 3020: M3020();break;
+         #endif
           #if ENABLED(EVT_HOMING_5X)
             case 89: M89(); break;  
             case 2004:M2004(); break;

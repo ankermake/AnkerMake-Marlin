@@ -81,6 +81,15 @@
   #include "../lcd/extui/ui_api.h"
 #endif
 
+#if ENABLED(ANKER_PROBE_SET)
+  #include "../feature/anker/anker_z_offset.h"
+#endif
+
+#if ENABLED(ADAPT_DETACHED_NOZZLE)
+#include "../feature/interactive/uart_nozzle_rx.h"
+#endif
+
+
 #define DEBUG_OUT ENABLED(DEBUG_LEVELING_FEATURE)
 #include "../core/debug_out.h"
 
@@ -619,6 +628,7 @@ bool Probe::probe_down_to_z(const_float_t z, const_feedRate_t fr_mm_s) {
   #endif
   
   #if ENABLED(PROVE_CONTROL)
+  if (!IS_new_nozzle_board())
       digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
   #endif
   #if ENABLED(ANKER_LEVEING)
@@ -630,6 +640,7 @@ bool Probe::probe_down_to_z(const_float_t z, const_feedRate_t fr_mm_s) {
     TERN_(HAS_QUIET_PROBING, set_probing_paused(true));
   #endif
   #if ENABLED(PROVE_CONTROL)
+  if (!IS_new_nozzle_board())
       digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
   #endif
 
@@ -646,7 +657,8 @@ bool Probe::probe_down_to_z(const_float_t z, const_feedRate_t fr_mm_s) {
   ;
 
   #if ENABLED(PROVE_CONTROL)
-    digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+  if (!IS_new_nozzle_board())
+      digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
   #endif
 
   TERN_(HAS_QUIET_PROBING, set_probing_paused(false));
@@ -773,11 +785,20 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
     // Attempt to tare the probe
     if (TERN0(PROBE_TARE, tare())) return NAN;
     
+    #if ENABLED(ANKER_PROBE_SET)
+    anker_probe_set.probe_start(anker_probe_set.leveing_value);
+    // anker_probe_set.probe_start(0);
+    #endif
+
     // Do a first probe at the fast speed
     if (try_to_probe(PSTR("FAST"), z_probe_low_point, z_probe_fast_mm_s,
                      sanity_check, Z_CLEARANCE_BETWEEN_PROBES) ) return NAN;
-
-    const float first_probe_z = current_position.z;
+    
+    #if ENABLED(ANKER_PROBE_DETECT_TIMES)
+      float first_probe_z = current_position.z;
+    #else
+      const float first_probe_z = current_position.z;
+    #endif
 
     if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("1st Probe Z:", first_probe_z);
     
@@ -824,9 +845,42 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
       // If the probe won't tare, return
       if (TERN0(PROBE_TARE, tare())) return true;
 
+      #if ENABLED(ANKER_PROBE_SET)
+      anker_probe_set.probe_start(anker_probe_set.leveing_value);
+      // anker_probe_set.probe_start(1);
+      #endif
+
       // Probe downward slowly to find the bed
-      if (try_to_probe(PSTR("SLOW"), z_probe_low_point, MMM_TO_MMS(Z_PROBE_FEEDRATE_SLOW),
-                       sanity_check, Z_CLEARANCE_MULTI_PROBE) ) return NAN;
+      #if ENABLED(ANKER_PROBE_DETECT_TIMES)
+        const float Z_probe_deviation = TERN(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board() ? NOZZLE_TYPE_NEW_Z_PROBE_DETECTION_DEVIATION : Z_PROBE_DETECTION_DEVIATION, Z_PROBE_DETECTION_DEVIATION);
+        uint8_t count_flag = 5; // The maximum number of consecutive attempts
+        do{
+          if (try_to_probe(PSTR("SLOW"), z_probe_low_point, MMM_TO_MMS(Z_PROBE_FEEDRATE_SLOW),
+                          sanity_check, Z_CLEARANCE_MULTI_PROBE) ) return NAN;
+          const float second_probe_z = current_position.z;
+          MYSERIAL2.printf("echo: num:%d Probe Z:%3.5f diff:%3.5f %3.5f\r\n", (uint8_t)(5-count_flag), second_probe_z, ABS((first_probe_z - second_probe_z)), planner.get_axis_position_mm(Z_AXIS));
+          if(ABS(first_probe_z - second_probe_z) < Z_probe_deviation)
+            {break;} // OK
+          else{ // try again
+            if(--count_flag){
+              first_probe_z = second_probe_z;
+              do_blocking_move_to_z(current_position.z + Z_CLEARANCE_MULTI_PROBE, MMM_TO_MMS(HOMING_RISE_SPEED));
+              #if ENABLED(ANKER_PROBE_SET)
+                anker_probe_set.probe_start(anker_probe_set.leveing_value);
+              #endif
+              safe_delay(200);
+            }else{
+              break;
+            }
+          }
+        }while(count_flag > 0);
+
+        if(count_flag == 0 && TERN1(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board())) return NAN; // error!!!  Only try on new_nozzle_board.
+        if(count_flag == 0) MYSERIAL2.printf("ERR CHECK----echo: num:%d Probe Z:%3.5f %3.5f\r\n", (uint8_t)(5-count_flag), current_position.z, planner.get_axis_position_mm(Z_AXIS));
+      #else // ! ENABLED(ANKER_PROBE_DETECT_TIMES)
+        if (try_to_probe(PSTR("SLOW"), z_probe_low_point, MMM_TO_MMS(Z_PROBE_FEEDRATE_SLOW),
+                        sanity_check, Z_CLEARANCE_MULTI_PROBE) ) return NAN;
+      #endif
 
       TERN_(MEASURE_BACKLASH_WHEN_PROBING, backlash.measure_with_probe());
 
@@ -940,7 +994,8 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
   do_blocking_move_to(npos, feedRate_t(XY_PROBE_FEEDRATE_MM_S));
 
   #if ENABLED(PROVE_CONTROL)
-    digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
+  if (!IS_new_nozzle_board())
+      digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
     //_delay_ms(200);
   #endif
 
@@ -1088,6 +1143,7 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
           debug_current_on(PSTR("Z"), saved_current_Z, Z_CURRENT_HOME);
         #endif
         TERN_(IMPROVE_HOMING_RELIABILITY, planner.enable_stall_prevention(true));
+        TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settleD
       }
       else {
         #if ENABLED(DELTA)
@@ -1105,6 +1161,7 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
           debug_current_on(PSTR("Z"), Z_CURRENT_HOME, saved_current_Z);
         #endif
         TERN_(IMPROVE_HOMING_RELIABILITY, planner.enable_stall_prevention(false));
+        TERN_(SENSORLESS_STALLGUARD_DELAY, safe_delay(SENSORLESS_STALLGUARD_DELAY));// Short delay needed to settle
       }
     #endif
   }

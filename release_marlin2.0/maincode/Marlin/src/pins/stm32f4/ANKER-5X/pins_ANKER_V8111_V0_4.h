@@ -50,7 +50,7 @@
 #define STEP_TIMER                            10
 
 #if HOTENDS > 2 || E_STEPPERS > 2
-  #error "ANKER_V8111_V1_0 supports up to 2 hotends / E-steppers."
+  #error "ANKER_V8110_V1_0 supports up to 2 hotends / E-steppers."
 #endif
 
 #ifdef NOZZLE_AS_PROBE 
@@ -131,13 +131,23 @@
   #define PROBE_HOMING_BUMP_MM      { 0, 0, 2 } 
 #endif
 
-#if ENABLED(ANKER_ANLIGN)
+#if ENABLED(ANKER_ANLIGN) // NOZZLE_TYPE_OLD <= v8111-auto-level-v0_5
  #define ALIGN_PER_RESET
  #define ANLIGN_RISE 1       //ascent
  #define ANLIGN_NUM  6
- #define ANLIGN_ALLOWED  0.1  //Error allowed
+ #define ANLIGN_ALLOWED  0.09//0.1  //Error allowed
  #define ANLIGN_MAX_VALUE 2  
  #define SCREW_DISTANCE  334  //mm
+#endif
+
+// NOZZLE_TYPE_NEW >= v8111-auto-level-v0_7
+#if ENABLED(ANKER_PROBE_DETECT_TIMES)
+  #define Z_PROBE_DETECTION_DEVIATION 0.05f  // Acceptable deviation between detections
+  #define NOZZLE_TYPE_NEW_Z_PROBE_DETECTION_DEVIATION 0.03f  // Acceptable deviation between detections
+#endif
+#if ENABLED(NOZZLE_AS_PROBE)
+  #define NOZZLE_TYPE_NEW_TO_PROBE_OFFSET { 0, 0, 0.05} // NOZZLE_TO_PROBE_OFFSET
+  #define NOZZLE_TYPE_NEW_ANLIGN_ALLOWED  0.08//0.1  //Error allowed
 #endif
 
 #ifdef SENSORLESS_HOMING
@@ -246,6 +256,10 @@
 // #ifndef FAN3_PIN
 //   #define FAN3_PIN                       PB14  // Fan3
 // #endif
+
+// Avoid nozzle heat and fan start before serial init
+#define BOARD_OPENDRAIN_MOSFETS
+
 
 #ifdef TMC_USE_SW_SPI
   #define TMC_SW_MOSI                       PD4     

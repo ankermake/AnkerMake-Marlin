@@ -760,6 +760,15 @@ class Temperature {
         #endif
       }
 
+      #if ENABLED(ADAPT_DETACHED_NOZZLE)
+       static void setCurrentHotend(const celsius_t celsius, const uint8_t E_NAME) {
+         const uint8_t ee = HOTEND_INDEX;
+         temp_hotend[ee].celsius = celsius;
+       }
+       static void heater_temp_error(const heater_id_t e);
+       static void heater_temp_runaway(const heater_id_t e);
+      #endif
+
       static inline bool isHeatingHotend(const uint8_t E_NAME) {
         return temp_hotend[HOTEND_INDEX].target > temp_hotend[HOTEND_INDEX].celsius;
       }
@@ -998,7 +1007,9 @@ class Temperature {
     #if HAS_LCD_MENU && HAS_TEMPERATURE
       static void lcd_preheat(const uint8_t e, const int8_t indh, const int8_t indb);
     #endif
-
+    static void min_temp_error(const heater_id_t e);
+    static void max_temp_error(const heater_id_t e);
+    
   private:
 
     // Reading raw temperatures and converting to Celsius when ready
@@ -1052,8 +1063,6 @@ class Temperature {
     static void temp_protect_process(void);
     #endif
     static void _temp_error(const heater_id_t e, PGM_P const serial_msg, PGM_P const lcd_msg);
-    static void min_temp_error(const heater_id_t e);
-    static void max_temp_error(const heater_id_t e);
 
     #define HAS_THERMAL_PROTECTION ANY(THERMAL_PROTECTION_HOTENDS, THERMAL_PROTECTION_CHAMBER, HAS_THERMALLY_PROTECTED_BED, THERMAL_PROTECTION_COOLER)
 

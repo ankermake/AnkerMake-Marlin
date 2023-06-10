@@ -32,6 +32,9 @@
 #if ENABLED(BABYSTEP_ZPROBE_OFFSET)
 #include "../../core/serial.h"
 #endif
+#if ADAPT_DETACHED_NOZZLE
+  #include "../../feature/interactive/uart_nozzle_rx.h"
+#endif
 
 #if ENABLED(MESH_BED_LEVELING)
 #include "../../feature/bedlevel/bedlevel.h"
@@ -45,7 +48,13 @@ FORCE_INLINE void mod_probe_offset(const_float_t offs)
   {
     probe.offset.z += offs;
 #if ENABLED(ANKER_NOZZLE_PROBE_OFFSET)
-    constexpr float anker_dpo[] = NOZZLE_TO_PROBE_OFFSET;
+    #if (ADAPT_DETACHED_NOZZLE && ENABLED(NOZZLE_AS_PROBE))
+      const float *anker_dpo = Get_NOZZLE_TO_PROBE_OFFSET();
+      //MYSERIAL1.printf("echo: M290= %3.5f %3.5f %3.5f\r\n", anker_dpo[X_AXIS],anker_dpo[Y_AXIS],anker_dpo[Z_AXIS]);
+    #else
+      constexpr float anker_dpo[] = NOZZLE_TO_PROBE_OFFSET;
+    #endif
+
     SERIAL_ECHO_MSG(STR_PROBE_OFFSET " " STR_Z, probe.offset.z - anker_dpo[Z_AXIS]);
 #else
     SERIAL_ECHOLNPAIR(STR_PROBE_OFFSET " " STR_Z, probe.offset.z);
