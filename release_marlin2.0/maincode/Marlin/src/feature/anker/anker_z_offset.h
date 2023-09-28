@@ -60,10 +60,9 @@ public:
     static int16_t leveing_value;
     static uint16_t delay;
     static uint8_t run_step;
-    static bool auto_run_flag;
     static xy_pos_t xy[5];
     static bool point_test_flag;
-    void probe_start(uint16_t value);
+    bool probe_start(uint16_t value);
     void reset_value();
     void report_value();
     void get_probe_value();
@@ -72,7 +71,6 @@ public:
     void run();
     void home_delay();
     void auto_run_send_start_info();
-    void auto_run();
     void point_test_ready();
     void point_test(uint8_t point);
 };

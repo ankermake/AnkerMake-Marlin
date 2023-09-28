@@ -93,6 +93,10 @@
  #include "../../../feature/anker/anker_nozzle_board.h"
 #endif
 
+#if ADAPT_DETACHED_NOZZLE
+  #include "../../../feature/interactive/uart_nozzle_tx.h"
+#endif
+
 #if ENABLED(ANKER_MAKE_API)||ENABLED(ANKERUI)
   uint16_t anker_level_point=0;
 #endif
@@ -703,6 +707,8 @@ G29_TYPE GcodeSuite::G29() {
 
           if (abl.verbose_level) SERIAL_ECHOLNPAIR("Probing mesh point ", pt_index, "/", abl.abl_points, ".");
           TERN_(HAS_STATUS_MESSAGE, ui.status_printf_P(0, PSTR(S_FMT " %i/%i"), GET_TEXT(MSG_PROBING_POINT), int(pt_index), int(abl.abl_points)));
+
+          TERN_(ADAPT_DETACHED_NOZZLE, if(IS_new_nozzle_board())uart_nozzle_tx_point_type(POINT_G29, pt_index));
 
           abl.measured_z = faux ? 0.001f * random(-100, 101) : probe.probe_at_point(abl.probePos, raise_after, abl.verbose_level);
 

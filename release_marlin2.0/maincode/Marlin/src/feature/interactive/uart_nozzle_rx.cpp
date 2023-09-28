@@ -5,6 +5,7 @@
 #include "../../module/temperature.h"
 #include "../anker/anker_z_offset.h"
 #include "clock.h"
+#include "../../gcode/queue.h"
 
 extern "C"
 {
@@ -65,8 +66,9 @@ extern "C"
     static uart_nozzle_info_t uart_nozzle_info;
     static uart_nozzle_rx_t uart_nozzle_rx;
     static uint8_t nozzle_rst_cnt;
+    static uint8_t heartbeat_flag = 0;
 
-    uint8_t nozzle_board_type; // nozzle old or new?
+    uint8_t nozzle_board_type = NOZZLE_TYPE_NEW; // nozzle old or new?
     uint8_t dev_probe_flg;
     nozzle_t nozzle;
 
@@ -228,7 +230,6 @@ extern "C"
     static void uart_nozzle_rx_callback(gcp_msg_t *gcp_msg)
     {
         uint8_t data[64];
-        uint8_t len = 0;
         char str[20];
 
         if (gcp_msg->src_module != GCP_MODULE_02_NOZZLE)
@@ -239,6 +240,7 @@ extern "C"
 
         dev_probe_flg = 1;
         nozzle_rst_cnt = 0;
+        heartbeat_flag = 0;
         uart_nozzle_rx.start_ms = getCurrentMillis();
 
         memset(data, 0, sizeof(data));
@@ -280,13 +282,14 @@ extern "C"
             nozzle.sw_version[0] = gcp_msg->content[3];
             nozzle.sw_version[1] = gcp_msg->content[4];
             nozzle.sw_version[2] = gcp_msg->content[5];
-
-            len = sprintf((char *)data, "ANKER_V8111_HW_V%d.%d.%d_SW_V%d.%d.%d\n",
+            nozzle_board_type = NOZZLE_TYPE_NEW;
+            MYSERIAL2.printLine("ANKER_V8111_HW_V%d.%d.%d_SW_V%d.%d.%d\n",
                           nozzle.hw_version[0], nozzle.hw_version[1], nozzle.hw_version[2],
                           nozzle.sw_version[0], nozzle.sw_version[1], nozzle.sw_version[2]);
-            MYSERIAL2.send(data, len + 1);
 
-            MYSERIAL1.printLine("%s", data);
+            MYSERIAL1.printLine("ANKER_V8111_HW_V%d.%d.%d_SW_V%d.%d.%d\n",
+                          nozzle.hw_version[0], nozzle.hw_version[1], nozzle.hw_version[2],
+                          nozzle.sw_version[0], nozzle.sw_version[1], nozzle.sw_version[2]);
             break;
 
         case GCP_CMD_28_ENV_T_ALARM:
@@ -339,23 +342,120 @@ extern "C"
             SERIAL_ECHOPAIR("echo:M3002 V", cs1237_test.cur_value, "\r\n");
             break;
 
+        case GCP_CMD_47_DEBUG_LOG:
+            MYSERIAL2.printLine("echo: nozzle debug log = %d\n", gcp_msg->content[0]);
+            break;
+
+        case GCP_CMD_48_POINT_TYPE: // Notify the nozzle board of the position under different commands.
+            MYSERIAL2.printLine("echo: nozzle tpye= %d, point= %d\n", gcp_msg->content[1], gcp_msg->content[0]);
+            break;
+
+        case GCP_CMD_49_PRODUCTION_MODE: // Switch between production test mode and normal mode.
+            MYSERIAL2.printLine("echo: production mode= %d, parm= %d\n", gcp_msg->content[1], gcp_msg->content[0]);
+            break;
+
+        case GCP_CMD_4A_OVERPRESSURE: // Detecting and checking parameters related to overpressure 
+            {
+                const uint8_t overpressure = gcp_msg->content[0];
+                const int32_t initial      = PACK_LE_32(&gcp_msg->content[1]);
+                const int32_t Raw          = PACK_LE_32(&gcp_msg->content[5]);
+                const int32_t filter       = PACK_LE_32(&gcp_msg->content[9]);
+                const int32_t diff         = PACK_LE_32(&gcp_msg->content[13]);
+                // uint8_t err_count    = gcp_msg->content[13];
+                // uint8_t HPF_count    = gcp_msg->content[14];
+                // uint8_t area0_count    = gcp_msg->content[15];
+                // uint8_t area1_count    = gcp_msg->content[16];
+
+                #if ENABLED(ANKER_PROBE_CONFIRM_RETRY)
+                    if (TRIGGER_NORMAL_THRESHOLD == overpressure) {production_mode.rx_type = PROBE_TRIGGER_NORMAL;}
+                    else if (TRIGGER_IDLE == overpressure) {production_mode.rx_type = PROBE_TRIGGER_IDLE;}
+                #endif
+
+                MYSERIAL2.printLine("echo: %s-point= %d, type= %d, adc= %d %d %d %d\n", POINT_TYPE_STRING, POINT_TYPE_POSITION, overpressure, initial, Raw, filter, diff);
+                #if ENABLED(ANKER_OVERPRESSURE_REPORT)
+                    if(ANKER_TEST_MODE() && (overpressure == TRIGGER_OVERPRESSURE))
+                    {
+                        production_mode.overpressure_trigger = OVERPRESSURE_TRIGGER_OPEN;
+                        if (endstops.z_probe_enabled)
+                        {
+                            planner.endstop_triggered(_AXIS(Z));
+                            anker_homing.trigger_ms = anker_homing.trigger_per_ms + ANTHER_TIME_ANTHOR_Z_MAX_LIMIT+100;
+                        }
+                    }
+                    else
+                    {
+                        production_mode.overpressure_trigger = OVERPRESSURE_TRIGGER_CLOSED;
+                    }
+                #endif
+            }
+            break;
+            
+        case GCP_CMD_4B_CLOGGED_NOZZLE: // Clogged nozzle config
+            {// RX: (count, trigger_adc) TX: M3034 [S<Clogged nozzle switch>] [T<Clogged nozzle threshold>] 
+                const uint16_t count = PACK_LE_16(&gcp_msg->content[0]);
+                const int32_t trigger_adc = PACK_LE_32(&gcp_msg->content[2]);
+                //MYSERIAL2.printLine("echo: Clogged nozzle= %d %d\n", count, trigger_adc);
+                if(queue.ring_buffer.full(BUFSIZE- 100)){
+                    SEND_ERRNO_TO_HOST(ERRNO_NOZZLE, GCP_CMD_4B_CLOGGED_NOZZLE, "%d %d", count, trigger_adc);
+                }
+            }
+            break;
+
+        case GCP_CMD_4C_ACTION_LOG:
+            {
+                production_mode.rx_type = gcp_msg->content[0];
+                production_mode.threshold    = PACK_LE_32(&gcp_msg->content[1]);
+                const int32_t current_val  = PACK_LE_32(&gcp_msg->content[5]);
+                const int32_t initial_val  = PACK_LE_32(&gcp_msg->content[9]);
+                TERN_(ANKER_PROBE_CONFIRM_RETRY, production_mode.rx_timeout = millis()+PROBE_TIMEROUT_AGAIN);
+                MYSERIAL2.printLine("echo: probe action=%s, %d %d %d\n", PROBE_ACTION_STRING(production_mode.rx_type), production_mode.threshold, current_val, initial_val);
+            }
+            break;
+
+        case GCP_CMD_4D_PROBE_ACK:
+            {
+                const uint8_t rx_type = gcp_msg->content[0];
+                const int32_t current_val  = PACK_LE_32(&gcp_msg->content[1]);
+                const int32_t initial_val  = PACK_LE_32(&gcp_msg->content[5]);
+                production_mode.current_diff = abs(current_val - initial_val);
+                production_mode.rx_ack = true;
+                if(production_mode.rx_type != rx_type)
+                {
+                    production_mode.rx_type = rx_type;
+                    MYSERIAL2.printLine("echo: probe ack=%s, %d %d\n", PROBE_ACTION_STRING(production_mode.rx_type), current_val, initial_val);
+                }
+            }
+            break;
+
         default:
             break;
         }
     }
 
+    void uart_nozzle_get_heartbeat_flag(void)
+    {
+        MYSERIAL2.printLine("echo:M3005,%d\r\n", heartbeat_flag);
+    }
+  
     static void uart_nozzle_rx_disconnect_check(void)
     {
+        static uint8_t pre_heartbeat_flag = 0;
         int gap = getCurrentMillis() - uart_nozzle_rx.start_ms;
 
         if (fatal_err == 1)
             return;
 
+
         if (gap > 5500)
         {
             nozzle_rst_cnt += 1;
-            if (nozzle_rst_cnt == 3)
-                MYSERIAL2.printLine("Err:disconnect with nozzle\n");
+            if (nozzle_rst_cnt >= 3 && nozzle_rst_cnt <= 5)
+            {
+                heartbeat_flag = 1;
+                thermalManager.setCurrentHotend(0, 0);
+                MYSERIAL2.printLine("echo:M3005,%d\r\nErr:disconnect with nozzle\n", heartbeat_flag);
+                safe_delay(5);
+            }
             if (nozzle_rst_cnt > 2)
             {
                 OUT_WRITE(NOZZLE_BOARD_PWR_PIN, !NOZZLE_BOARD_PWR_STATE);
@@ -369,6 +469,14 @@ extern "C"
                 OUT_WRITE(NOZZLE_BOARD_PWR_PIN, NOZZLE_BOARD_PWR_STATE);
                 uart_nozzle_rx.start_ms = getCurrentMillis();
             }
+
+        }
+
+        if (pre_heartbeat_flag != heartbeat_flag) // Synchronize the heartbeat command of the new and old nozzle boards
+        {
+            safe_delay(5);
+            pre_heartbeat_flag = heartbeat_flag;
+            MYSERIAL2.printLine("echo:M3005,%d\r\n", heartbeat_flag);
         }
     }
 

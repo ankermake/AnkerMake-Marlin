@@ -39,8 +39,9 @@
         ANKER_Z_AXIS get_first_end_z_axis();
         void anker_dual_z_run_align();//Roughly level the two Z axes
         void set_triger_per_ms();
+        int16_t triger_Take_time();
         void set_triger_ms();  
-        void set_probe_triger_ms();
+        void set_probe_triger_ms(const bool debug_out = true);
         bool is_z_top_triger();      
         bool is_anthor_z_no_triger();//The other axis is not firing  
         bool is_z_probe_no_triger();

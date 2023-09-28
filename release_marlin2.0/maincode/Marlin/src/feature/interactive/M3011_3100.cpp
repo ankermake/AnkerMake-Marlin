@@ -37,16 +37,16 @@ void GcodeSuite::M3011(void)
             memcpy(data, (uint8_t *)"ANKER_V8111_BOOT_V0.0.0", 23);
         }
         data[23] = '\n';
+        data[24] = '\0';
+        data[25] = '\0';
 
-        MYSERIAL2.send(data, 24);
+        MYSERIAL2.printLine("%s",data);
         break;
 
     case 1: // get nozzle hw&sw verion
         if (nozzle_board_type == NOZZLE_TYPE_OLD)
         {
-            memcpy(data, (uint8_t *)"ANKER_V8111_HW_V0.0.0_SW_V0.0.0", 31);
-            data[31] = '\n';
-            MYSERIAL2.send(data, 32);
+            MYSERIAL2.printLine("ANKER_V8111_HW_V0.0.0_SW_V0.0.0\n");
         }
         else
         {

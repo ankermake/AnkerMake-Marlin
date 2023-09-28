@@ -469,6 +469,7 @@ static bool ak_gcode_parse(char *command)
     case 290: //set babystep
     case 420: //read auto-level data
     case 3003: //set nozzle board threshold
+    case 3034: // M3034 [C<Cancel alarm>] [S<Clogged nozzle switch>] [T<Clogged nozzle threshold>]
       has_high_priority = 1;
       break;
     }

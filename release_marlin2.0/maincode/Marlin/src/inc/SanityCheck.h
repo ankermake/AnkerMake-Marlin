@@ -1673,6 +1673,14 @@ static_assert(Y_MAX_LENGTH >= Y_BED_SIZE, "Movement bounds (Y_MIN_POS, Y_MAX_POS
   #endif
 #endif
 
+#if ENABLED(ANKER_PROBE_CONFIRM_RETRY)
+  #if DISABLED(ANKER_PROBE_SET)
+    #error "ANKER_PROBE_CONFIRM_RETRY requires ANKER_PROBE_SET."
+  #elif DISABLED(ADAPT_DETACHED_NOZZLE)
+    #error "ANKER_PROBE_CONFIRM_RETRY requires ADAPT_DETACHED_NOZZLE."
+  #endif
+#endif
+
 /**
  * Allow only one bed leveling option to be defined
  */

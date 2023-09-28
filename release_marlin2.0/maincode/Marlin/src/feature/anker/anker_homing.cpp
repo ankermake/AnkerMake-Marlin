@@ -131,6 +131,12 @@
         {
           anker_homing.trigger_per_ms=millis();
         }
+        
+        int16_t Anker_Homing::triger_Take_time()
+        {
+           return (int16_t)(millis() - anker_homing.trigger_per_ms);
+        }
+
         void Anker_Homing:: set_triger_ms()
         {
           anker_homing.trigger_ms=millis();
@@ -160,10 +166,10 @@
           return true;
           else return false;
         }
-        void Anker_Homing:: set_probe_triger_ms()
+        void Anker_Homing:: set_probe_triger_ms(const bool debug_out /* = true*/)
         {
           anker_homing.trigger_ms=millis();
-          SERIAL_ECHO(" probe trigger!!\r\n");
+          if(debug_out) SERIAL_ECHO(" probe trigger!!\r\n");
         }
         bool Anker_Homing:: is_z_probe_no_triger()//If the probe does not trigger for a long time, reset Z to zero
         {

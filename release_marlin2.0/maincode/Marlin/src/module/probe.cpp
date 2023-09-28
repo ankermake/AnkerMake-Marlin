@@ -93,6 +93,10 @@
 #define DEBUG_OUT ENABLED(DEBUG_LEVELING_FEATURE)
 #include "../core/debug_out.h"
 
+#if ENABLED(ANKER_MAKE_API)
+  #include "../feature/anker/anker_probe.h"
+#endif
+
 Probe probe;
 
 xyz_pos_t Probe::offset; // Initialized by settings.load()
@@ -752,28 +756,30 @@ bool Probe::probe_down_to_z(const_float_t z, const_feedRate_t fr_mm_s) {
  */
 float Probe::run_z_probe(const bool sanity_check/*=true*/) {
   DEBUG_SECTION(log_probe, "Probe::run_z_probe", DEBUGGING(LEVELING));
+  
+  #if DISABLED(ANKER_PROBE_DETECT_TIMES)
+    auto try_to_probe = [&](PGM_P const plbl, const_float_t z_probe_low_point, const feedRate_t fr_mm_s, const bool scheck, const float clearance) -> bool {
+      // Tare the probe, if supported
+      if (TERN0(PROBE_TARE, tare())) return true;
 
-  auto try_to_probe = [&](PGM_P const plbl, const_float_t z_probe_low_point, const feedRate_t fr_mm_s, const bool scheck, const float clearance) -> bool {
-    // Tare the probe, if supported
-    if (TERN0(PROBE_TARE, tare())) return true;
+      // Do a first probe at the fast speed
+      const bool probe_fail = probe_down_to_z(z_probe_low_point, fr_mm_s),            // No probe trigger?
+                early_fail = (scheck && current_position.z > -offset.z + clearance); // Probe triggered too high?
+      #if ENABLED(DEBUG_LEVELING_FEATURE)
+        if (DEBUGGING(LEVELING) && (probe_fail || early_fail)) {
+          DEBUG_ECHOPGM_P(plbl);
+          DEBUG_ECHOPGM(" Probe fail! -");
+          if (probe_fail) DEBUG_ECHOPGM(" No trigger.");
+          if (early_fail) DEBUG_ECHOPGM(" Triggered early.");
+          DEBUG_EOL();
+        }
+      #else
+        UNUSED(plbl);
+      #endif
 
-    // Do a first probe at the fast speed
-    const bool probe_fail = probe_down_to_z(z_probe_low_point, fr_mm_s),            // No probe trigger?
-               early_fail = (scheck && current_position.z > -offset.z + clearance); // Probe triggered too high?
-    #if ENABLED(DEBUG_LEVELING_FEATURE)
-      if (DEBUGGING(LEVELING) && (probe_fail || early_fail)) {
-        DEBUG_ECHOPGM_P(plbl);
-        DEBUG_ECHOPGM(" Probe fail! -");
-        if (probe_fail) DEBUG_ECHOPGM(" No trigger.");
-        if (early_fail) DEBUG_ECHOPGM(" Triggered early.");
-        DEBUG_EOL();
-      }
-    #else
-      UNUSED(plbl);
-    #endif
-
-    return probe_fail || early_fail;
-  };
+      return probe_fail || early_fail;
+    };
+  #endif
 
   // Stop the probe before it goes too low to prevent damage.
   // If Z isn't known then probe to -10mm.
@@ -785,20 +791,17 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
     // Attempt to tare the probe
     if (TERN0(PROBE_TARE, tare())) return NAN;
     
-    #if ENABLED(ANKER_PROBE_SET)
-    anker_probe_set.probe_start(anker_probe_set.leveing_value);
-    // anker_probe_set.probe_start(0);
-    #endif
+    TERN_(ANKER_PROBE_SET, if(anker_probe_set.probe_start(anker_probe_set.leveing_value)){return NAN;})
 
     // Do a first probe at the fast speed
-    if (try_to_probe(PSTR("FAST"), z_probe_low_point, z_probe_fast_mm_s,
-                     sanity_check, Z_CLEARANCE_BETWEEN_PROBES) ) return NAN;
-    
     #if ENABLED(ANKER_PROBE_DETECT_TIMES)
-      float first_probe_z = current_position.z;
+      if (anker_probe.try_to_probe(PSTR("FAST"), z_probe_low_point, z_probe_fast_mm_s,
+                      sanity_check, Z_CLEARANCE_BETWEEN_PROBES) ) return NAN;
     #else
-      const float first_probe_z = current_position.z;
+      if (try_to_probe(PSTR("FAST"), z_probe_low_point, z_probe_fast_mm_s,
+                      sanity_check, Z_CLEARANCE_BETWEEN_PROBES) ) return NAN;
     #endif
+    const float first_probe_z = current_position.z;
 
     if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("1st Probe Z:", first_probe_z);
     
@@ -845,38 +848,11 @@ float Probe::run_z_probe(const bool sanity_check/*=true*/) {
       // If the probe won't tare, return
       if (TERN0(PROBE_TARE, tare())) return true;
 
-      #if ENABLED(ANKER_PROBE_SET)
-      anker_probe_set.probe_start(anker_probe_set.leveing_value);
-      // anker_probe_set.probe_start(1);
-      #endif
+      TERN_(ANKER_PROBE_SET, if(anker_probe_set.probe_start(anker_probe_set.leveing_value)){return NAN;})
 
       // Probe downward slowly to find the bed
       #if ENABLED(ANKER_PROBE_DETECT_TIMES)
-        const float Z_probe_deviation = TERN(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board() ? NOZZLE_TYPE_NEW_Z_PROBE_DETECTION_DEVIATION : Z_PROBE_DETECTION_DEVIATION, Z_PROBE_DETECTION_DEVIATION);
-        uint8_t count_flag = 5; // The maximum number of consecutive attempts
-        do{
-          if (try_to_probe(PSTR("SLOW"), z_probe_low_point, MMM_TO_MMS(Z_PROBE_FEEDRATE_SLOW),
-                          sanity_check, Z_CLEARANCE_MULTI_PROBE) ) return NAN;
-          const float second_probe_z = current_position.z;
-          MYSERIAL2.printf("echo: num:%d Probe Z:%3.5f diff:%3.5f %3.5f\r\n", (uint8_t)(5-count_flag), second_probe_z, ABS((first_probe_z - second_probe_z)), planner.get_axis_position_mm(Z_AXIS));
-          if(ABS(first_probe_z - second_probe_z) < Z_probe_deviation)
-            {break;} // OK
-          else{ // try again
-            if(--count_flag){
-              first_probe_z = second_probe_z;
-              do_blocking_move_to_z(current_position.z + Z_CLEARANCE_MULTI_PROBE, MMM_TO_MMS(HOMING_RISE_SPEED));
-              #if ENABLED(ANKER_PROBE_SET)
-                anker_probe_set.probe_start(anker_probe_set.leveing_value);
-              #endif
-              safe_delay(200);
-            }else{
-              break;
-            }
-          }
-        }while(count_flag > 0);
-
-        if(count_flag == 0 && TERN1(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board())) return NAN; // error!!!  Only try on new_nozzle_board.
-        if(count_flag == 0) MYSERIAL2.printf("ERR CHECK----echo: num:%d Probe Z:%3.5f %3.5f\r\n", (uint8_t)(5-count_flag), current_position.z, planner.get_axis_position_mm(Z_AXIS));
+        if(anker_probe.Mult_detections(z_probe_low_point, first_probe_z, sanity_check)) return NAN;
       #else // ! ENABLED(ANKER_PROBE_DETECT_TIMES)
         if (try_to_probe(PSTR("SLOW"), z_probe_low_point, MMM_TO_MMS(Z_PROBE_FEEDRATE_SLOW),
                         sanity_check, Z_CLEARANCE_MULTI_PROBE) ) return NAN;
@@ -1034,9 +1010,15 @@ float Probe::probe_at_point(const_float_t rx, const_float_t ry, const ProbePtRai
     if (isnan(measured_z))
     {
       retry_cnt++;
-      MYSERIAL2.printf("probe: retry_cnt %d\r\n", retry_cnt);
-      do_blocking_move_to_z(current_position.z + 1, MMM_TO_MMS(HOMING_RISE_SPEED));
-      do_blocking_move_to_z(current_position.z - 1, MMM_TO_MMS(HOMING_RISE_SPEED));
+      
+      #if ENABLED(ANKER_PROBE_DETECT_TIMES)
+        do_blocking_move_to_z(current_position.z+Z_CLEARANCE_MULTI_PROBE, MMM_TO_MMS(HOMING_RISE_SPEED));
+        MYSERIAL2.printf("probe: retry_cnt %d, raising up:%3.2f\r\n", retry_cnt, current_position.z);
+      #else
+        MYSERIAL2.printf("probe: retry_cnt %d\r\n", retry_cnt);
+        do_blocking_move_to_z(current_position.z + 1, MMM_TO_MMS(HOMING_RISE_SPEED));
+        do_blocking_move_to_z(current_position.z - 1, MMM_TO_MMS(HOMING_RISE_SPEED));
+      #endif
     }
   }
 

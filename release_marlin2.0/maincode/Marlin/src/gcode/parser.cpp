@@ -403,7 +403,9 @@ void GCodeParser::parse(char *p) {
 #endif // CNC_COORDINATE_SYSTEMS
 
 void GCodeParser::unknown_command_warning() {
-  SERIAL_ECHO_MSG(STR_UNKNOWN_COMMAND, command_ptr, "\"");
+  const char *first_char = command_ptr;
+  if(*first_char != '\0')
+    SERIAL_ECHO_MSG(STR_UNKNOWN_COMMAND, command_ptr, "\"");
 }
 
 #if ENABLED(DEBUG_GCODE_PARSER)

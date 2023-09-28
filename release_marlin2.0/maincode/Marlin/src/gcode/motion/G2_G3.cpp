@@ -230,11 +230,12 @@ void plan_arc(
    */
   // Vector rotation matrix values
   xyze_pos_t raw;
-  const float theta_per_segment = proportion * angular_travel / segments,
-              sq_theta_per_segment = sq(theta_per_segment),
-              sin_T = theta_per_segment - sq_theta_per_segment * theta_per_segment / 6,
-              cos_T = 1 - 0.5f * sq_theta_per_segment; // Small angle approximation
-
+  const float theta_per_segment = proportion * angular_travel / segments;
+  #if N_ARC_CORRECTION > 1
+    const float sq_theta_per_segment = sq(theta_per_segment),
+                sin_T = theta_per_segment - sq_theta_per_segment * theta_per_segment / 6,
+                cos_T = 1 - 0.5f * sq_theta_per_segment; // Small angle approximation
+  #endif
   #if DISABLED(AUTO_BED_LEVELING_UBL)
     ARC_LIJK_CODE(
       const float per_segment_L = proportion * travel_L / segments,

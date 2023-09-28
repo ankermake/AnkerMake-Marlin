@@ -48,7 +48,7 @@
 /*******************************Functional API Configuration****************************/
 #if MACCHINE == MOTOR_5X_DVT
     #ifndef SHORT_BUILD_VERSION
-     #define SHORT_BUILD_VERSION            "V8111_V3.0.46"
+     #define SHORT_BUILD_VERSION            "V8111_V3.0.75"
     #endif
     #define ANKER_MAKE_API           1 //gcode
     #define ANKER_GCODE_CHECK        0
@@ -90,9 +90,11 @@
     #define ANKER_VALIDATE_HOMING_ENDSTOPS 1
     #define ANKER_TEMP_ADC_FILTER    1
     #define ANKER_E_SMOOTH           1
-	#define ADAPT_DETACHED_NOZZLE    1
+    #define ADAPT_DETACHED_NOZZLE    1
     #define ANKER_PROBE_SET          1
     #define ANKER_PROBE_DETECT_TIMES 1 // Probe multiple times at the same point
+    #define ANKER_OVERPRESSURE_REPORT 0
+    #define ANKER_PROBE_CONFIRM_RETRY 1 // Confirmation and Retry of Nozzle Board Communication Mechanism
 #endif
 
 /*******************************Error detection****************************/

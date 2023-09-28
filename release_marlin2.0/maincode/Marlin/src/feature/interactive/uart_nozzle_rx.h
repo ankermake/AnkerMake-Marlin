@@ -24,7 +24,7 @@ extern "C"
     const float* Get_NOZZLE_TO_PROBE_OFFSET(void);
     bool IS_new_nozzle_board(void);
     void uart_nozzle_init(void);
-
+    void uart_nozzle_get_heartbeat_flag(void);
     void uart_nozzle_polling(void);
 
     void uart_nozzle_tx_probe_val(uint16_t val);

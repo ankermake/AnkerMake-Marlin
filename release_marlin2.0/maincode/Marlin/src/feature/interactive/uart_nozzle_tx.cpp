@@ -7,6 +7,20 @@
 #include "../../inc/MarlinConfig.h"
 #include "../../module/temperature.h"
 #include "clock.h"
+#include "../anker/anker_z_offset.h"
+
+
+production_mode_t production_mode ={
+    .mode = PRODUCTION_NORMAL_MODE,
+    .parm = STA_00_OFF,
+    #if ENABLED(ANKER_OVERPRESSURE_REPORT)
+    .overpressure_trigger = OVERPRESSURE_TRIGGER_CLOSED,
+    #endif
+    .threshold = LEVEING_PROBE_VALUE,
+    .rx_timeout = 0,
+    .rx_type = PROBE_UNKNOW,
+    .rx_ack = false,
+};
 
 extern "C"
 {
@@ -218,6 +232,41 @@ extern "C"
                            0);
 
         MYSERIAL3.send((uint8_t *)gcp_msg, len);
+    }
+
+    void uart_nozzle_tx_point_type(uint8_t type, uint8_t point) // Notify the nozzle board of the position under different commands.
+    { // type = G28/G36/G29, point= position or count in different modes
+        uint8_t buff[2] = {0, 0}; // (type, point)
+        production_mode.type = buff[1] = type;
+        production_mode.point = buff[0] = point;
+        uart_nozzle_tx_multi_data(GCP_CMD_48_POINT_TYPE, buff, 2);
+    }
+
+    void uart_nozzle_tx_production_mode(const uint8_t mode, const uint8_t parm) // Switch between production test mode and normal mode.
+    {   // mode = PRODUCTION_NORMAL_MODE/PRODUCTION_TEST_MODE; parm = STA_00_OFF/STA_01_ON/STA_02_ON
+        uint8_t buff[2] = {0, 0}; // (type, point)
+        production_mode.mode = buff[1] = mode;
+        production_mode.parm = buff[0] = parm;
+        uart_nozzle_tx_multi_data(GCP_CMD_49_PRODUCTION_MODE, buff, 2);
+    }
+    // TX: M3034 [C<Cancel alarm>] [S<Clogged nozzle switch>] [T<Clogged nozzle threshold>]  RX: (count, trigger_adc) 
+    void uart_nozzle_tx_clogged_nozzle(const clogged_nozzle_t clogged_nozzle) // Clogged nozzle config
+    {   // NOTE:-1 means invalid data. nozzle_switch = -1/0/1; threshold = -1/Other numbers besides -1;
+        // [C<Cancel alarm>] = C0 means cancel counting information.
+        uint8_t content[6];
+        if(CANCEL_ALALRN == clogged_nozzle.type){
+            content[0] = (uint8_t)clogged_nozzle.type;
+            content[1] = (uint8_t)clogged_nozzle.countclear;
+            uart_nozzle_tx_multi_data(GCP_CMD_4B_CLOGGED_NOZZLE, content, 2);
+        }else if(CANCEL_ALALRN == clogged_nozzle.type){
+            content[0] = (uint8_t)clogged_nozzle.type;
+            content[1] = (uint8_t)clogged_nozzle.enable;
+            content[2] = clogged_nozzle.threshold & 0xFF;
+            content[3] = clogged_nozzle.threshold >> 8;
+            content[4] = clogged_nozzle.threshold >> 16;
+            content[5] = clogged_nozzle.threshold >> 24;
+            uart_nozzle_tx_multi_data(GCP_CMD_4B_CLOGGED_NOZZLE, content, 6);
+        }
     }
 }
 

@@ -115,6 +115,11 @@
   #include "../feature/anker/anker_pause.h"
 #endif
 
+#if ENABLED(ANKER_PROBE_CONFIRM_RETRY)
+#include "../feature/interactive/uart_nozzle_tx.h"
+#include "../feature/anker/anker_probe.h"
+#endif
+
 // Delay for delivery of first block to the stepper ISR, if the queue contains 2 or
 // fewer movements. The delay is measured in milliseconds, and must be less than 250ms
 #define BLOCK_DELAY_FOR_1ST_MOVE 100
@@ -1828,27 +1833,11 @@ void Planner::synchronize() {
   ) 
   {
     idle();
+    TERN_(ANKER_PROBE_CONFIRM_RETRY, if(anker_probe.is_probing_flag && anker_probe.is_in_probing_state()){anker_probe.is_probing_flag = false;}) // ok
   }
 }
 
-#if ENABLED(EVT_HOMING_5X)
-#include "../feature/anker/anker_homing.h"
-  bool Planner::anker_probe_home_synchronize() {
-    while (has_blocks_queued() || cleaning_buffer_counter)
-    {
-      #if ENABLED(USE_Z_SENSORLESS)
-        if(anker_homing.is_z_probe_no_triger())
-        {
-          planner.endstop_triggered(_AXIS(Z));
-          SERIAL_ECHO(" probe timeout!!\r\n");
-          return false;
-        }
-      #endif
-      idle();
-    }
-    return true;
-  }
-#endif
+
 /**
  * Planner::_buffer_steps
  *

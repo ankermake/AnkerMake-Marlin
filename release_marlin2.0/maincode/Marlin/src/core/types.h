@@ -105,7 +105,7 @@ enum AxisEnum : uint8_t {
   #endif
 
   // To refer to all or none
-  , ALL_AXES_ENUM = 0xFE, NO_AXIS_ENUM = 0xFF
+  , XY_AXES_ENUM = 0xFD, ALL_AXES_ENUM = 0xFE, NO_AXIS_ENUM = 0xFF
 };
 
 typedef IF<(NUM_AXIS_ENUMS > 8), uint16_t, uint8_t>::type axis_bits_t;

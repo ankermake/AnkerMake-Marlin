@@ -957,6 +957,7 @@ void idle(bool no_stepper_sleep/*=false*/) {
       #endif
   }  
 
+  TERN_(ANKER_MAKE_API, stepper.current_status_polling());
 
   IDLE_DONE:
   TERN_(MARLIN_DEV_MODE, idle_depth--);

@@ -942,11 +942,6 @@ class Planner {
     // Block until all buffered steps are executed / cleaned
     static void synchronize();
 
-    #if ENABLED(EVT_HOMING_5X)
-      // Block until all buffered steps are executed / cleaned
-      static bool anker_probe_home_synchronize();
-    #endif
-
     // Wait for moves to finish and disable all steppers
     static void finish_and_disable();
 

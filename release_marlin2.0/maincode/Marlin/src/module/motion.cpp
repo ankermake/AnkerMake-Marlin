@@ -87,7 +87,12 @@
   #include "../feature/anker/anker_z_offset.h"
 #endif
 
+#if ENABLED(ANKER_MAKE_API)
+  #include "../feature/anker/anker_probe.h"
+#endif
+
 #if ENABLED(ADAPT_DETACHED_NOZZLE)
+#include "../feature/interactive/uart_nozzle_tx.h"
 #include "../feature/interactive/uart_nozzle_rx.h"
 #endif
 
@@ -97,9 +102,7 @@
 // Relative Mode. Enable with G91, disable with G90.
 bool relative_mode; // = false;
 
-#if ENABLED(WS1_HOMING_5X)
-  bool is_anker_safely_delay=true;//Determine whether a delay before zeroing is required
-#endif
+
 /**
  * Cartesian Current Position
  *   Used to track the native machine position as moves are queued.
@@ -1659,7 +1662,7 @@ void prepare_line_to_destination() {
 
             #if ENABLED(PROVE_CONTROL)
               #if ENABLED(WS1_HOMING_5X) 
-                  if(is_anker_safely_delay)
+                  if(anker_probe.safely_delay)
                     {
                        if (!IS_new_nozzle_board())
                           digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
@@ -1721,11 +1724,8 @@ void prepare_line_to_destination() {
         if (axis == Z_AXIS && final_approach) probe.set_probing_paused(false);
       #endif
 
-      #if ENABLED(ANKER_VALIDATE_HOMING_ENDSTOPS)
-        endstops.anker_validate_homing_move(axis);
-      #else
-        endstops.validate_homing_move();
-      #endif
+      endstops.validate_homing_move(axis);
+
 
       // Re-enable stealthChop if used. Disable diag1 pin on driver.
       TERN_(SENSORLESS_HOMING, end_sensorless_homing_per_axis(axis, stealth_states));
@@ -1733,67 +1733,6 @@ void prepare_line_to_destination() {
     }
   }
   
-  #if ENABLED(EVT_HOMING_5X)
-    /**
-   * anker probe Home an individual linear axis
-   */
-  bool anker_do_probe_homing_move(const AxisEnum axis, const float distance, const feedRate_t fr_mm_s=0.0, const bool final_approach=true) {
-    DEBUG_SECTION(log_move, "do_homing_move", DEBUGGING(LEVELING));
-
-    const feedRate_t home_fr_mm_s = fr_mm_s ?: homing_feedrate(axis);
-
-    // Only do some things when moving towards an endstop
-    const int8_t axis_home_dir = TERN0(DUAL_X_CARRIAGE, axis == X_AXIS)
-                  ? TOOL_X_HOME_DIR(active_extruder) : home_dir(axis);
-    const bool is_home_dir = (axis_home_dir > 0) == (distance > 0);
-    
-    bool no_trigge=false;
-    if (is_home_dir) {
-        if(is_anker_safely_delay)
-          {
-              if (!IS_new_nozzle_board())
-                  digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
-              if(anker_leve_pause)
-              probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING_TRUE);
-              else
-              probe.anker_level_set_probing_paused(true,ANKER_LEVEING_DELAY_BEFORE_PROBING);
-              if (!IS_new_nozzle_board())
-                  digitalWrite(PROVE_CONTROL_PIN, PROVE_CONTROL_STATE);
-          } 
-    }
-
-      // Get the ABC or XYZ positions in mm
-      abce_pos_t target = planner.get_axis_positions_mm();
-
-      target[axis] = 0;                         // Set the single homing axis to 0
-      planner.set_machine_position_mm(target);  // Update the machine position
-      #if ENABLED(USE_Z_SENSORLESS)
-       anker_homing.set_triger_per_ms();
-      #endif
-      // Set delta/cartesian axes directly
-      target[axis] = distance;                  // The move will be towards the endstop
-      planner.buffer_segment(target OPTARG(HAS_DIST_MM_ARG, cart_dist_mm), home_fr_mm_s, active_extruder);
-
-      if(!planner.anker_probe_home_synchronize())
-      {
-        no_trigge=true;
-      }
-    
-    if (is_home_dir) {
-
-      #if HOMING_Z_WITH_PROBE && HAS_QUIET_PROBING
-        if (axis == Z_AXIS && final_approach) probe.set_probing_paused(false);
-      #endif
-
-      #if ENABLED(ANKER_VALIDATE_HOMING_ENDSTOPS)
-        endstops.anker_validate_homing_move(axis);
-      #else
-        endstops.validate_homing_move();
-      #endif
-    }
-    return no_trigge;
-  }
- #endif
 
   /**
    * Set an axis to be unhomed. (Unless we are on a machine - e.g. a cheap Chinese CNC machine -
@@ -2108,112 +2047,6 @@ void prepare_line_to_destination() {
     #endif
     
   } // another_z_homeaxis()
-  // bool is_z_rise=true;
-  // void anther_z_homeaxis(const AxisEnum axis) {
-    
-  //   stepper.set_separate_multi_axis(true);
-  //   // Do a move to correct part of the misalignment for the current stepper
-  //   do_blocking_move_to_z(current_position.z+ANTHER_Z_RISE_DISTANCE);
-
-  //   // Back to normal stepper operations
-  //   stepper.set_all_z_lock(false);
-  //   stepper.set_separate_multi_axis(false);  
-
-  //   another_do_homing_move(axis, ANTHER_Z_DROP_DISTANCE, 0.0);
-    
-  //   set_axis_is_at_home(axis);
-  //   sync_plan_position();
-
-  //   stepper.set_all_z_lock(false);
-  //   destination[axis] = current_position[axis];
-    
-  //   // if(anker_homing.is_anthor_z_no_triger())
-  //   // {
-  //   //   // is_z_rise=false;
-  //   //   // anker_home_dual_z(Z_AXIS);
-  //   // }
-  //   // else
-  //   // {
-  //     switch (anker_homing.get_first_end_z_axis())
-  //     {
-  //       case Z_AXIS_IS_Z1:
-  //           SERIAL_ECHOLNPGM("Z_AXIS_IS_Z1!"); 
-  //             anker_align.add_z1_value_no_save(ANTHER_Z_RISE_DISTANCE);
-  //       break;
-  //       case Z_AXIS_IS_Z2:
-  //           SERIAL_ECHOLNPGM("Z_AXIS_IS_Z2!"); 
-  //             anker_align.add_z2_value_no_save(ANTHER_Z_RISE_DISTANCE);
-  //       break;
-  //       case Z_AXIS_IDLE:
-  //           SERIAL_ECHOLNPGM("Z_AXIS_IDLE!\r\n"); 
-  //       break;
-  //     }
-  //     // is_z_rise=true;
-  //  // }
-  //   is_z_rise=true;
-  // } // another_z_homeaxis()
-
-  // void anker_home_dual_z(const AxisEnum axis) {
-
-  //   const int axis_home_dir = home_dir(axis);
-  //   #if ENABLED(USE_Z_SENSORLESS)
-  //      stepperZ.anker_homing_threshold(ANKER_Z_STALL_SENSITIVITY);
-  //    #ifdef ANKER_Z2_STALL_SENSITIVITY
-  //       stepperZ2.anker_homing_threshold(ANKER_Z_STALL_SENSITIVITY);
-  //    #endif
-  //   #endif
-
-  //   #if ENABLED(ANKER_FIX_ENDSTOPR)
-  //     endstops.set_anker_endstop(2);
-  //   #endif
-  //   anker_homing.set_first_end_z_axis(Z_AXIS_IDLE);
-      
-  //   // Set flags for X, Y, Z motor locking
-  //   stepper.set_separate_multi_axis(true);
-    
-  //   // Fast move towards endstop until triggered
-  //   do_homing_move(axis, -300, 0.0, 0);
-
-  //   // Reset flags for X, Y, Z motor locking
-  //   stepper.set_separate_multi_axis(false);
-      
-  //   set_axis_is_at_home(axis);
-  //   sync_plan_position();
-
-  //   destination[axis] = current_position[axis];
-  //   is_z_rise=false;
-
-  //   if(anker_homing.is_z_top_triger())
-  //   {
-  //     SERIAL_ECHO("--1>is_z_top_triger=true\r\n");
-  //     another_do_homing_move(axis, ANTHER_Z_DROP_DISTANCE, 0.0);
-  //     anker_home_dual_z(Z_AXIS);
-  //   }
-  //   else
-  //   {
-  //     SERIAL_ECHO("--2>is_z_top_triger=false\r\n");
-  //     anther_z_homeaxis(Z_AXIS);
-  //   }
-
-  //   const xyz_float_t endstop_backoff = HOMING_BACKOFF_POST_MM;
-  //   if (endstop_backoff[axis]&&is_z_rise) {
-  //     current_position[axis] -= ABS(endstop_backoff[axis]) * axis_home_dir;
-  //     line_to_current_position(
-  //       homing_feedrate(axis)
-  //     );
-  //     planner.synchronize();
-  //   }
-
-  //   #if ENABLED(ANKER_ANLIGN)
-  //     if ((axis == Z_AXIS)&&is_z_rise)
-  //     {
-  //       anker_align.run_align();
-  //     }
-  //   #endif
-
-  //   if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("<<< anker_home_dual_z(", AS_CHAR(AXIS_CHAR(axis)), ")");
-
-  // } // anker_home_dual_z()
   
  #endif
   void homeaxis(const AxisEnum axis) {
@@ -2267,7 +2100,7 @@ void prepare_line_to_destination() {
     if (TERN0(0, axis == Z_AXIS && probe.deploy()))
       return;
 
-    is_anker_safely_delay=false;
+    anker_probe.safely_delay = false;
     // Set flags for X, Y, Z motor locking
     #if HAS_EXTRA_ENDSTOPS
       switch (axis) {
@@ -2614,212 +2447,6 @@ void prepare_line_to_destination() {
 
   } // homeaxis()
 
-  int Probe_homeaxis(const AxisEnum axis,uint8_t anker_homing) {
-
-    int error_status = 1;
-    #if EITHER(MORGAN_SCARA, MP_SCARA)
-      // Only Z homing (with probe) is permitted
-      if (axis != Z_AXIS) { BUZZ(100, 880); return; }
-    #else
-      #define _CAN_HOME_P(A) (axis == _AXIS(A) && ( \
-           ENABLED(A##_SPI_SENSORLESS) \
-        || TERN0(HAS_Z_AXIS, TERN0(HOMING_Z_WITH_PROBE, _AXIS(A) == Z_AXIS)) \
-        || TERN0(A##_HOME_TO_MIN, A##_MIN_PIN > -1) \
-        || TERN0(A##_HOME_TO_MAX, A##_MAX_PIN > -1) \
-      ))
-      if (LINEAR_AXIS_GANG(
-           !_CAN_HOME_P(X),
-        && !_CAN_HOME_P(Y),
-        && !_CAN_HOME_P(Z),
-        && !_CAN_HOME_P(I),
-        && !_CAN_HOME_P(J),
-        && !_CAN_HOME_P(K))
-      ) return 2;
-    #endif
-
-    if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR(">>> probe_homeaxis(", AS_CHAR(AXIS_CHAR(axis)), ")");
-
-    const int axis_home_dir = TERN0(DUAL_X_CARRIAGE, axis == X_AXIS)
-                ? TOOL_X_HOME_DIR(active_extruder) : home_dir(axis);
-
-    is_anker_safely_delay=true;
-    //
-    // Homing Z with a probe? Raise Z (maybe) and deploy the Z probe.
-    //
-    if (TERN0(HOMING_Z_WITH_PROBE, axis == Z_AXIS && probe.anker_deploy()))
-      return 2;
-
-    // Determine if a homing bump will be done and the bumps distance
-    // When homing Z with probe respect probe clearance
-    const bool use_probe_bump = TERN0(0, axis == Z_AXIS && anker_home_bump_mm(axis));
-    const float bump = axis_home_dir * (
-      use_probe_bump ? _MAX(TERN0(0, Z_CLEARANCE_BETWEEN_PROBES), anker_home_bump_mm(axis)) : anker_home_bump_mm(axis)
-    );
-    //
-    // Fast move towards endstop until triggered
-    //
-    const float move_length = 1.5f * max_length(TERN(DELTA, Z_AXIS, axis)) * axis_home_dir;
-    if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("probe_Home Fast: ", move_length, "mm");
-    //do_homing_move(axis, move_length, 0.0, !use_probe_bump);
-
-    #if ENABLED(ANKER_PROBE_SET)
-      anker_probe_set.probe_start(anker_probe_set.leveing_value);
-      // anker_probe_set.probe_start(0);
-    #endif
-
-    if(anker_do_probe_homing_move(axis, move_length, MMM_TO_MMS(Z_PROBE_FEEDRATE_FAST), !use_probe_bump))
-    {
-      #if ENABLED(PROVE_CONTROL)
-      if (!IS_new_nozzle_board())
-          digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
-      #endif
-      set_axis_is_at_home(axis);
-      sync_plan_position();
-      destination[axis] = current_position[axis];
-      probe.anker_stow();
-       return 0;
-    }
-    float probe_first =  planner.triggered_position_mm(_AXIS(Z));
-    MYSERIAL1.printf("Z homing first=%f\n", probe_first);
-    #if BOTH(HOMING_Z_WITH_PROBE, BLTOUCH_SLOW_MODE)
-      if (axis == Z_AXIS) bltouch.stow(); // Intermediate STOW (in LOW SPEED MODE)
-    #endif
-     #if ENABLED(PROVE_CONTROL)
-     if (!IS_new_nozzle_board())
-         digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
-     #endif
-    // If a second homing move is configured...
-    if (bump) {
-      // Move away from the endstop by the axis HOMING_BUMP_MM
-      if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("probe_Move Away: ", -bump, "mm");
-       anker_do_probe_homing_move(axis, -bump, TERN(HOMING_Z_WITH_PROBE, (axis == Z_AXIS ? MMM_TO_MMS(HOMING_RISE_SPEED) : 0), 0), false);
-
-      if(READ(Z_MIN_PROBE_PIN) == Z_MIN_PROBE_STATE)
-      {
-        MYSERIAL2.printf("probe: homeaxis signal error!\r\n");
-        #if ENABLED(PROVE_CONTROL)
-        if (!IS_new_nozzle_board())
-            digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
-        #endif
-        set_axis_is_at_home(axis);
-        sync_plan_position();
-        destination[axis] = current_position[axis];
-        probe.anker_stow();
-        return 0;
-      }
-
-      #if ENABLED(DETECT_BROKEN_ENDSTOP)
-        // Check for a broken endstop
-        EndstopEnum es;
-        switch (axis) {
-          default:
-          case X_AXIS: es = X_ENDSTOP; break;
-          case Y_AXIS: es = Y_ENDSTOP; break;
-          case Z_AXIS: es = Z_ENDSTOP; break;
-          #if LINEAR_AXES >= 4
-            case I_AXIS: es = I_ENDSTOP; break;
-          #endif
-          #if LINEAR_AXES >= 5
-            case J_AXIS: es = J_ENDSTOP; break;
-          #endif
-          #if LINEAR_AXES >= 6
-            case K_AXIS: es = K_ENDSTOP; break;
-          #endif
-        }
-        if (TEST(endstops.state(), es)) {
-          SERIAL_ECHO_MSG("Bad ", AS_CHAR(AXIS_CHAR(axis)), " Endstop?");
-          kill(GET_TEXT(MSG_KILL_HOMING_FAILED));
-        }
-      #endif
-
-      #if BOTH(HOMING_Z_WITH_PROBE, BLTOUCH_SLOW_MODE)
-        if (axis == Z_AXIS && bltouch.deploy()) return; // Intermediate DEPLOY (in LOW SPEED MODE)
-      #endif
-      #if ENABLED(ANKER_PROBE_SET)
-      if((anker_probe_set.auto_run_flag)&&(anker_homing==2))
-      {
-          anker_probe_set.auto_run_send_start_info();
-      }
-      else
-      {
-          anker_probe_set.probe_start(anker_probe_set.leveing_value);
-          // anker_probe_set.probe_start(1);
-      }
-      #endif
-      // Slow move towards endstop until triggered
-      const float rebump = bump * 2;
-      if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("probe_Re-bump: ", rebump, "mm");
-
-      #if ENABLED(ANKER_PROBE_DETECT_TIMES)
-        if (axis == Z_AXIS){
-          uint8_t count_flag = 5; // The maximum number of consecutive attempts
-          const float Z_probe_deviation = TERN(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board() ? NOZZLE_TYPE_NEW_Z_PROBE_DETECTION_DEVIATION : Z_PROBE_DETECTION_DEVIATION, Z_PROBE_DETECTION_DEVIATION);
-          safe_delay(200);
-          do{
-            if (anker_do_probe_homing_move(axis, rebump, get_homing_bump_feedrate(axis), true)) {// timer out!!! move up and try again
-              anker_do_probe_homing_move(axis, -bump, TERN(HOMING_Z_WITH_PROBE, (axis == Z_AXIS ? MMM_TO_MMS(HOMING_RISE_SPEED) : 0), 0), false);
-              continue;
-            }
-            float probe_second =  planner.triggered_position_mm(_AXIS(Z));
-            //MYSERIAL1.printf("echo: Z homing try:%d Probe Z at:%3.5f diff:%3.5f\r\n", (uint8_t)(5-count_flag), probe_second, ABS((probe_first - probe_second)));
-            MYSERIAL2.printf("echo: Z homing try:%d Probe Z at:%3.5f diff:%3.5f %3.5f\r\n", (uint8_t)(5-count_flag), probe_second, ABS((probe_first - probe_second)), planner.get_axis_position_mm(Z_AXIS));
-            if(ABS(probe_first - probe_second) < Z_probe_deviation)
-              {break;} // OK!
-            else{ // move up and try again
-              if(--count_flag){
-                probe_first = probe_second;
-                anker_do_probe_homing_move(axis, -bump, TERN(HOMING_Z_WITH_PROBE, (axis == Z_AXIS ? MMM_TO_MMS(HOMING_RISE_SPEED) : 0), 0), false);
-                #if ENABLED(ANKER_PROBE_SET)
-                anker_probe_set.probe_start(anker_probe_set.leveing_value);
-                safe_delay(200);
-                #endif
-              }else{
-                break;
-              }
-            }
-          }while(count_flag > 0);
-
-          if(count_flag == 0 && TERN1(ADAPT_DETACHED_NOZZLE, IS_new_nozzle_board())) {error_status = 0;} // error!!! try homing again. Only try on new_nozzle_board.
-          if(count_flag == 0) MYSERIAL2.printf("ERR CHECK HOMING----echo: num:%d Probe Z:%3.5f %3.5f\r\n", (uint8_t)(5-count_flag), current_position.z, planner.get_axis_position_mm(Z_AXIS));
-        }else{
-          anker_do_probe_homing_move(axis, rebump, get_homing_bump_feedrate(axis), true);
-        }
-      #else // ! ENABLED(ANKER_PROBE_DETECT_TIMES)
-        anker_do_probe_homing_move(axis, rebump, get_homing_bump_feedrate(axis), true);
-      #endif
-
-      #if BOTH(HOMING_Z_WITH_PROBE, BLTOUCH)
-        if (axis == Z_AXIS) bltouch.stow(); // The final STOW
-      #endif
-      #if ENABLED(PROVE_CONTROL)
-      if (!IS_new_nozzle_board())
-          digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
-      #endif
-    }
-    
-     MYSERIAL2.printf("echo: ERR CHECK HOMING----Probe Z:%3.5f\r\n", planner.triggered_position_mm(_AXIS(Z)));
-
-    set_axis_is_at_home(axis);
-
-    sync_plan_position();
-    destination[axis] = current_position[axis];
-    if (DEBUGGING(LEVELING)) DEBUG_POS("> probe_AFTER set_axis_is_at_home", current_position);
-
-    // Put away the Z probe
-    #if HOMING_Z_WITH_PROBE
-       #if ENABLED(PROVE_CONTROL)
-       if (!IS_new_nozzle_board())
-           digitalWrite(PROVE_CONTROL_PIN, !PROVE_CONTROL_STATE);
-       #endif
-      if (axis == Z_AXIS && probe.anker_stow()) return 2;
-    #endif
-    
-    // #if ENABLED(ANKER_ANLIGN)
-    //   anker_align.run_align();
-    // #endif
-    if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPAIR("<<< probe_homeaxis(", AS_CHAR(AXIS_CHAR(axis)), ")");
-    return error_status;
-  } // homeaxis()
  #else
   void homeaxis(const AxisEnum axis) {
 

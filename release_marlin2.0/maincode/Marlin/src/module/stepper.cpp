@@ -134,6 +134,18 @@ Stepper stepper; // Singleton
 #if ENABLED(ANKER_PAUSE_FUNC)
   #include "../feature/anker/anker_pause.h"
 #endif
+#if ENABLED(ANKER_PROBE_CONFIRM_RETRY)
+#include "../feature/anker/anker_probe.h"
+#include "../feature/interactive/uart_nozzle_rx.h"
+#endif
+
+
+#if ENABLED(ANKER_MAKE_API)
+typedef struct report_currentStatus_t {
+    float nominal_speed_sqr; // (mm/sec)^2
+}report_currentStatus_t;
+report_currentStatus_t RCS;
+#endif
 
 // public:
 
@@ -241,6 +253,8 @@ uint32_t Stepper::ticks_nominal = 0;
 xyz_long_t Stepper::endstops_trigsteps;
 xyze_long_t Stepper::count_position{0};
 xyze_int8_t Stepper::count_direction{0};
+
+TERN_(ANKER_PROBE_CONFIRM_RETRY, volatile Stepper_status Stepper::run_status = STPPER_RUNNING;)
 
 #if ENABLED(LASER_POWER_INLINE_TRAPEZOID)
   Stepper::stepper_laser_t Stepper::laser_trap = {
@@ -1440,7 +1454,8 @@ void Stepper::isr() {
     }
 
     if (!nextMainISR) pulse_phase_isr();                            // 0 = Do coordinated axes Stepper pulses
-
+    
+    TERN_(ANKER_PROBE_CONFIRM_RETRY, if(endstops.z_probe_enabled && STPPER_PROBE_PAUSE == run_status){next_isr_ticks = (STEPPER_TIMER_RATE) / 1000UL;break;})
     
     #if ENABLED(LIN_ADVANCE)
     if(planner.LIN_ADV_version_change >= LIN_ADV_VERSION_2){
@@ -1594,6 +1609,7 @@ void Stepper::pulse_phase_isr() {
 
   // If we must abort the current block, do so!
   if (abort_current_block) {
+    TERN_(ANKER_PROBE_CONFIRM_RETRY, if(STPPER_PROBE_PAUSE == run_status) return);
     abort_current_block = false;
     if (current_block) discard_current_block();
   }
@@ -2408,8 +2424,8 @@ uint32_t Stepper::block_phase_isr() {
       acceleration_time = deceleration_time = 0;
 
       #if ENABLED(ADAPTIVE_STEP_SMOOTHING)
-      if(planner.LIN_ADV_version_change >= LIN_ADV_VERSION_2){
-        oversampling_factor = 0;                            // Assume no axis smoothing (via oversampling)
+      oversampling_factor = 0;   // Assume no axis smoothing (via oversampling)
+      if(planner.LIN_ADV_version_change >= LIN_ADV_VERSION_2){                       
         // Decide if axis smoothing is possible
         uint32_t max_rate = current_block->nominal_rate;    // Get the step event rate
         while (max_rate < MIN_STEP_ISR_FREQUENCY) {         // As long as more ISRs are possible...
@@ -2548,6 +2564,7 @@ uint32_t Stepper::block_phase_isr() {
       // Calculate the initial timer interval
       interval = calc_timer_interval(current_block->initial_rate << oversampling_factor, steps_per_isr);
       acceleration_time += interval;
+      TERN_(ANKER_MAKE_API, RCS.nominal_speed_sqr = current_block->nominal_speed_sqr);
 
       #if ENABLED(LIN_ADVANCE)
         if(planner.LIN_ADV_version_change >= LIN_ADV_VERSION_2){
@@ -3195,6 +3212,7 @@ void Stepper::endstop_triggered(const AxisEnum axis) {
 
   // Discard the rest of the move if there is a current block
   quick_stop();
+  TERN_(ANKER_PROBE_CONFIRM_RETRY, if(IS_new_nozzle_board())anker_probe.stop_all_steppers(axis);)
 
   if (was_enabled) wake_up();
 }
@@ -3254,6 +3272,62 @@ void Stepper::report_positions() {
 
   report_a_position(pos);
 }
+
+#if ENABLED(ANKER_MAKE_API)
+/**
+ * @brief  Report the current actual printing status.
+ * @param  None
+ * @retval None
+ */
+void Stepper::report_current_status(uint8_t index) {
+
+  static float pre_nominal_speed = 0;
+
+  const float current_nominal_speed = SQRT(RCS.nominal_speed_sqr);
+  
+  // Do not report when there is no change in the data.
+  if(current_nominal_speed == pre_nominal_speed){
+      return;
+  }
+
+  switch (index)
+  { // Send to different locations based on different IDs
+    case SERIAL_DEBUG:
+      break;
+
+    case SERIAL_HOST:
+      SEND_DEBUG_TO_HOST(ERRNO_MOTION_STATUS, MS_REAL_TIME_STATUS, "%.0f", current_nominal_speed);
+      break;
+
+    case SERIAL_NOZZLE:
+      break;
+
+    default:
+    break;
+  }
+
+  pre_nominal_speed = current_nominal_speed;
+
+}
+
+/**
+ * @brief  Report the current actual printing status.
+ * @param  None
+ * @retval None
+ */
+void Stepper::current_status_polling() {
+
+   const millis_t ms = millis();
+  // Limit nextReportCheck_ms frequency to 1second
+  static millis_t nextReportCheck_ms = 0;
+  if (ELAPSED(ms, nextReportCheck_ms)) {
+    if(queue.ring_buffer.full(BUFSIZE/2)){
+      report_current_status(SERIAL_HOST);
+    }
+    nextReportCheck_ms = ms + 1000UL;
+  }
+}
+#endif
 
 #if ENABLED(BABYSTEPPING)
 
