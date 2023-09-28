@@ -262,6 +262,12 @@ void GcodeSuite::M3004()
 // M3005 get abnormal_reset_times com_error_times
 void GcodeSuite::M3005()
 {
+  if (IS_new_nozzle_board())
+  {
+    uart_nozzle_get_heartbeat_flag();
+    return;
+  }
+  
   anker_nozzle_board_info_t *p_info = get_anker_nozzle_board_info();
   SERIAL_ECHOPAIR("echo:M3005,", p_info->heartbeat_abnormal_flag, "\r\n");
 }

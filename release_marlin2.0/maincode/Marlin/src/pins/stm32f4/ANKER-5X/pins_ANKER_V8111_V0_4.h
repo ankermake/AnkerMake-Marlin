@@ -143,7 +143,6 @@
 // NOZZLE_TYPE_NEW >= v8111-auto-level-v0_7
 #if ENABLED(ANKER_PROBE_DETECT_TIMES)
   #define Z_PROBE_DETECTION_DEVIATION 0.05f  // Acceptable deviation between detections
-  #define NOZZLE_TYPE_NEW_Z_PROBE_DETECTION_DEVIATION 0.03f  // Acceptable deviation between detections
 #endif
 #if ENABLED(NOZZLE_AS_PROBE)
   #define NOZZLE_TYPE_NEW_TO_PROBE_OFFSET { 0, 0, 0.05} // NOZZLE_TO_PROBE_OFFSET
@@ -152,6 +151,13 @@
 
 #ifdef SENSORLESS_HOMING
  #define ANKER_SENSORLESS_HOMING_BACKOFF_MM  { 5, 5, 0 }  // (mm) Backoff from endstops before  homing
+#endif
+
+#ifdef ANKER_PROBE_CONFIRM_RETRY
+#define PROBE_TIMEROUT_AGAIN    100 // ms
+#define PROBE_ACK_TIMEROUT      410 // ms The longest time to check if it is valid when there is a touch signal, if the signal cannot be detected beyond this time, it is considered a communication anomaly.
+#define PROBE_TRIGGERED_EARLY   500 // ms Triggered early
+#define PROBE_START_TIMEROUT    2000//600 // ms  NOTE: must be a multiple of 50
 #endif
 
 #if ENABLED(NO_MOTION_BEFORE_HOMING)

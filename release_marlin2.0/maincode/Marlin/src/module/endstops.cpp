@@ -394,35 +394,24 @@ void Endstops::not_homing() {
 
 #if ENABLED(VALIDATE_HOMING_ENDSTOPS)
   // If the last move failed to trigger an endstop, call kill
-  void Endstops::validate_homing_move() {
-    if (trigger_state()) hit_on_purpose();
-    else kill(GET_TEXT(MSG_KILL_HOMING_FAILED));
-  }
-#endif
+  void Endstops::validate_homing_move(const AxisEnum axis/* = ALL_AXES_ENUM */) {
 
-#if ENABLED(ANKER_VALIDATE_HOMING_ENDSTOPS)
-  void Endstops::anker_validate_homing_move(const AxisEnum axis)
-  {
-    if (trigger_state()) 
-    {
-      hit_on_purpose();
-    }
-    else
-    {
-      switch(axis)
-      {
-        case X_AXIS:
-          MYSERIAL2.printf("Error:Homing Error X_AXIS\r\n");
-          break;
-        case Y_AXIS:
-          MYSERIAL2.printf("Error:Homing Error Y_AXIS\r\n");
-          break;
-        case Z_AXIS:
-          MYSERIAL2.printf("Error:Homing Error Z_AXIS\r\n");
-          break;
-        default:
-          break;
-      }
+    TERN_(ANKER_PROBE_CONFIRM_RETRY, stepper.run_status = STPPER_RUNNING);
+
+    if (trigger_state()) hit_on_purpose();
+    else{
+      #if ENABLED(ANKER_VALIDATE_HOMING_ENDSTOPS)
+        switch(axis)
+        {
+          case X_AXIS: MYSERIAL2.printLine("Error:Homing Error X_AXIS\r\n"); break;
+          case Y_AXIS: MYSERIAL2.printLine("Error:Homing Error Y_AXIS\r\n"); break;
+          case Z_AXIS: MYSERIAL2.printLine("Error:Homing Error Z_AXIS\r\n"); break;
+          case XY_AXES_ENUM : MYSERIAL2.printLine("Error:Homing Error XY_AXIS\r\n"); break;
+          case ALL_AXES_ENUM: MYSERIAL2.printLine("Error:Homing Error ALL_AXIS\r\n"); break;
+          default: break;
+        }
+      #endif
+
       kill(GET_TEXT(MSG_KILL_HOMING_FAILED));
     }
   }

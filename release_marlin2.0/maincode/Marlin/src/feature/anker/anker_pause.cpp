@@ -16,6 +16,10 @@
 #include "../../module/planner.h"
 #include "../../module/stepper.h"
 #include "../../module/temperature.h"
+#if ENABLED(ANKER_ANLIGN)
+  #include "anker_align.h" 
+#endif
+
 
 #define ANKER_PAUSE_RESET 0       //anker continue after pause reset enable/disable
 #define ANKER_PAUSE_PRE_EXTRUDE 0 //anker continue after pause pre-extrude enable/disable
@@ -233,13 +237,13 @@ static void anker_pause_deal(void)
         p_info->pause_queue_state = ANKER_PAUSE_QUEUE_DISABLE;
         if(parser.report_layer_num <= PRINT_LAYER_NUM)
         {
-            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F12000\r\n", p_info->save_block_buf.cur_pos.z + 2);
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F1800\r\n", p_info->save_block_buf.cur_pos.z + 2);
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
         }
         queue.ring_buffer.enqueue("G1 X10 Y0 F12000\r\n");
         if(parser.report_layer_num <= PRINT_LAYER_NUM)
         {
-            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F12000\r\n", p_info->save_block_buf.cur_pos.z);
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F1800\r\n", p_info->save_block_buf.cur_pos.z);
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
         }
         p_info->pause_serial_state = ANKER_PAUSE_SERIAL_DISABLE;
@@ -268,12 +272,16 @@ static void anker_pause_deal(void)
             #endif
             if(parser.report_layer_num <= PRINT_LAYER_NUM)
             {
-                snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F12000\r\n", p_info->save_block_buf.cur_pos.z + 2);
+                snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F1800\r\n", p_info->save_block_buf.cur_pos.z + 2);
                 queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
             }
-            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 X%f Y%f Z%f F12000\r\n", p_info->save_block_buf.cur_pos.x,
-                    p_info->save_block_buf.cur_pos.y, p_info->save_block_buf.cur_pos.z);
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 X%f Y%f F12000\r\n", p_info->save_block_buf.cur_pos.x,
+                    p_info->save_block_buf.cur_pos.y);
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
+
+            snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 Z%f F1800\r\n", p_info->save_block_buf.cur_pos.z);
+            queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
+
             // MYSERIAL1.printf("<==> CONTINUE %s",p_info->tmp_cmd_buf);
             snprintf(p_info->tmp_cmd_buf, sizeof(p_info->tmp_cmd_buf), "G1 F%f\r\n", p_info->save_block_buf.cur_fr_mm_s);
             queue.ring_buffer.enqueue(p_info->tmp_cmd_buf);
@@ -370,6 +378,7 @@ static void anker_stop_start(void)
         p_info->stop_deal_step = ANKER_STOP_DEAL_STEP_IDLE;
 
         p_info->stop_flag = ANKER_STOP_START;
+        TERN_(ANKER_ANLIGN, anker_align.is_g36_cmd_executing = false);
     }
 }
 

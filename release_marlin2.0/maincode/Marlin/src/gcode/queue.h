@@ -93,7 +93,7 @@ public:
       //Each command will return the remaining buffer space
       void report_buf_free_size(); //{int left = BUFSIZE - ring_buffer.length;SERIAL_ECHOLNPAIR("+RINGBUF-RES:", left);}
     #endif
-    inline bool full(uint8_t cmdCount=1) const { return length > (BUFSIZE - cmdCount); }
+    inline bool full(uint16_t cmdCount=1) const { return length > (BUFSIZE - cmdCount); }
 
     inline bool occupied() const { return length != 0; }
 

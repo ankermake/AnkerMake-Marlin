@@ -219,7 +219,7 @@ public:
       ;
       static constexpr xy_pos_t default_probe_xy_offset = { default_probe_xyz_offset.x,  default_probe_xyz_offset.y };
 
-    public:
+     public:
       static constexpr bool can_reach(float x, float y) {
         #if IS_KINEMATIC
           return HYPOT2(x, y) <= sq(probe_radius(default_probe_xy_offset));
@@ -283,9 +283,9 @@ public:
     static void disable_stallguard_diag1();
     static void set_homing_current(const bool onoff);
   #endif
-
-private:
+  
   static bool probe_down_to_z(const_float_t z, const_feedRate_t fr_mm_s);
+private:
   static void do_z_raise(const float z_raise);
   static float run_z_probe(const bool sanity_check=true);
 };

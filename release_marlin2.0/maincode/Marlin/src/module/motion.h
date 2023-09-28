@@ -398,10 +398,6 @@ void set_axis_is_at_home(const AxisEnum axis);
    */
   extern linear_axis_bits_t axis_homed, axis_trusted;
   void homeaxis(const AxisEnum axis);
-    #if ENABLED(WS1_HOMING_5X)
-      int Probe_homeaxis(const AxisEnum axis,uint8_t anker_homing);
-    #endif
-      void anker_home_dual_z(const AxisEnum axis);
       void anther_z_homeaxis(const AxisEnum axis);
   void set_axis_never_homed(const AxisEnum axis);
   linear_axis_bits_t axes_should_home(linear_axis_bits_t axis_bits=linear_bits);

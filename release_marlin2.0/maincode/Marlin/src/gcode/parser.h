@@ -107,7 +107,9 @@ public:
         report_layer = 0;
       }
     }
-
+    FORCE_INLINE static void clear_report_z_axis_info(void) {
+      report_layer_num = 0.0;
+    }
   #endif
 
   #if ENABLED(ANKER_M_CMDBUF)

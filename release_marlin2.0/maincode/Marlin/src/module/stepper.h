@@ -45,6 +45,7 @@
 
 #include "planner.h"
 #include "stepper/indirection.h"
+#include "endstops.h"
 #ifdef __AVR__
   #include "speed_lookuptable.h"
 #endif
@@ -235,6 +236,14 @@
 // This does not account for the possibility of multi-stepping.
 // Perhaps DISABLE_MULTI_STEPPING should be required with ADAPTIVE_STEP_SMOOTHING.
 #define MIN_STEP_ISR_FREQUENCY (MAX_STEP_ISR_FREQUENCY_1X / 2)
+
+
+#if ENABLED(ANKER_PROBE_CONFIRM_RETRY)
+  enum Stepper_status : uint8_t {
+      STPPER_RUNNING = 0, STPPER_PROBE_PAUSE, STEPPER_HOMING, STEPPER_DELAY, STEPPER_NONE
+  };
+#endif 
+
 #if ENABLED(ANKER_E_SMOOTH)
 
 #define INTERVAL_4US ((STEPPER_TIMER_RATE) / 250000UL)
@@ -303,6 +312,10 @@ class Stepper {
     #if ENABLED(ANKER_E_SMOOTH)//add by Anan.huang
       static la_stepper_bits_t la_status;
     #endif
+
+    #if ENABLED(ANKER_PROBE_CONFIRM_RETRY)
+     static volatile Stepper_status run_status;
+    #endif 
 
   private:
 
@@ -479,7 +492,10 @@ class Stepper {
     // Report the positions of the steppers, in steps
     static void report_a_position(const xyz_long_t &pos);
     static void report_positions();
-
+    #if ENABLED(ANKER_MAKE_API)
+     static void report_current_status(uint8_t index);
+     static void current_status_polling();
+    #endif
     // Discard current block and free any resources
     FORCE_INLINE static void discard_current_block() {
       #if ENABLED(DIRECT_STEPPING)
@@ -499,6 +515,16 @@ class Stepper {
 
     // Quickly stop all steppers
     FORCE_INLINE static void quick_stop() { abort_current_block = true; }
+
+    #if ENABLED(ANKER_PROBE_CONFIRM_RETRY)
+    // Restart the stopped motion
+    FORCE_INLINE static void restart_stopped_motion(void) {
+      const bool was_enabled = suspend();
+      abort_current_block = false;
+      run_status = STPPER_RUNNING;
+      if (was_enabled) wake_up();
+    }
+    #endif
 
     // The direction of a single motor
     FORCE_INLINE static bool motor_direction(const AxisEnum axis) { return TEST(last_direction_bits, axis); }

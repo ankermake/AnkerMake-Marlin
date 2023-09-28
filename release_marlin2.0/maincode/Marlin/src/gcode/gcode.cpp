@@ -1120,6 +1120,11 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
             case 3004: M3004(); break;
             case 3005: M3005(); break;
             case 3009: M3009(); break;
+            case 3030: M3030(); break;
+            case 3031: M3031(); break;
+            case 3032: M3032(); break;
+            case 3033: M3033(); break;
+            case 3034: M3034(); break;
           #endif
           #if ENABLED(ADAPT_DETACHED_NOZZLE)
             case 3011: M3011();break;

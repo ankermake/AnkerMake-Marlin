@@ -290,6 +290,42 @@ void serialprintPGM(PGM_P str);
   #define SERIAL_DECIMAL(V) SERIAL_ECHO(V)
 #endif
 
+#if ENABLED(ANKER_MAKE_API)
+  enum serial_type
+  {
+      SERIAL_DEBUG  = 0,
+      SERIAL_HOST   = 1,
+      SERIAL_NOZZLE = 2,
+      SERIAL_NONE,
+  };
+  enum errno_type
+  {
+      ERRNO_NOZZLE        = 0,
+      ERRNO_SERIAL_QUEUE  = 1,
+      ERRNO_SERIAL_DEBUG  = 2,
+      ERRNO_MOTION_STATUS = 3,
+      ERRNO_NONE,
+  };
+  enum errno2_motion_status_type
+  {
+      MS_REAL_TIME_STATUS   = 0,
+      MS_PROBE_STATUS       = 1,
+      MS_NONE,
+  };
+  #define ERR_STR0_CONCAT(err_type, str_var) "Err_<%d-%X><" err_type "> = " str_var "\n" // String concatenation
+  #define ERR_STR1_CONCAT(str_var) "Err_<%d-%X> = " str_var "\n" // String concatenation
+  #define DEBUFG_STR_CONCAT(str_var) "echo_<%d-%X> = " str_var "\n" // String concatenation
+  #define DEBUFG_RESPONSE_CONCAT(str_var) "resp_<%d-%X> = " str_var "\n" // String concatenation
+  #define SEND_MSG_CODE_TO_NOZZLE(...) do{MYSERIAL1.printLine(__VA_ARGS__);}while (0) // Send the information to the nozzle board
+  #define SEND_MSG_CODE_TO_HOST(...) do{MYSERIAL2.printLine(__VA_ARGS__);}while (0) // Send the information to the Junzheng board
+  #define SEND_MSG_CODE_TO_DEBUG(...) do{MYSERIAL3.printLine(__VA_ARGS__);}while (0) // Send the information to the debug board
+  #define SEND_ERR_STR_CODE(errno, errno2, err_type, str_var, ...) SEND_MSG_CODE_TO_HOST(ERR_STR0_CONCAT(err_type, str_var), errno, errno2, __VA_ARGS__)
+  #define SEND_ERRNO_TO_HOST(errno, errno2, str_var, ...) SEND_MSG_CODE_TO_HOST(ERR_STR1_CONCAT(str_var), errno, errno2, __VA_ARGS__)
+  #define SEND_DEBUG_TO_HOST(errno, errno2, str_var, ...) SEND_MSG_CODE_TO_HOST(DEBUFG_STR_CONCAT(str_var), errno, errno2, __VA_ARGS__)
+  #define SEND_RESPONSE_TO_HOST(errno, errno2, str_var, ...) SEND_MSG_CODE_TO_HOST(DEBUFG_RESPONSE_CONCAT(str_var), errno, errno2, __VA_ARGS__)
+  #define SEND_ECHO_TO_HOST(...) SEND_DEBUG_TO_HOST(ERRNO_SERIAL_DEBUG, 0, __VA_ARGS__)
+#endif
+
 //
 // Functions for serial printing from PROGMEM. (Saves loads of SRAM.)
 //

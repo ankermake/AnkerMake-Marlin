@@ -81,6 +81,10 @@
 #include "../../feature/interactive/uart_nozzle_rx.h"
 #endif
 
+#if ENABLED(ANKER_MAKE_API)
+#include "../../feature/anker/anker_probe.h"
+#endif
+
 #if ENABLED(QUICK_HOME)
 
   static void quick_home_xy() {
@@ -114,7 +118,7 @@
 
     do_blocking_move_to_xy(1.5 * mlx * x_axis_home_dir, 1.5 * mly * Y_HOME_DIR, fr_mm_s);
 
-    endstops.validate_homing_move();
+    endstops.validate_homing_move(XY_AXES_ENUM);
 
     current_position.set(0.0, 0.0);
 
@@ -194,7 +198,7 @@
       #endif
       do_blocking_move_to_xy(destination);
       #if ENABLED(WS1_HOMING_5X)
-         if(Probe_homeaxis(Z_AXIS,2)==0)
+         if(anker_probe.Probe_homeaxis(Z_AXIS)==0)
          {
            #if ENABLED(USE_Z_SENSORLESS)
             anker_homing.is_again_probe_homing=true;
@@ -280,7 +284,7 @@
          do_blocking_move_to_xy(destination);
 
         #if ENABLED(WS1_HOMING_5X)
-          if(Probe_homeaxis(Z_AXIS,1)==0)//motion not detected bed
+          if(anker_probe.Probe_homeaxis(Z_AXIS)==0)//motion not detected bed
           {
             #if ENABLED(USE_Z_SENSORLESS)
              anker_homing.is_again_probe_homing=true;
@@ -354,7 +358,10 @@
 void GcodeSuite::G28() {
   DEBUG_SECTION(log_G28, "G28", DEBUGGING(LEVELING));
   if (DEBUGGING(LEVELING)) log_machine_info();
- 
+
+  TERN_(PHOTO_Z_LAYER, parser.clear_report_z_axis_info());
+  TERN_(ANKER_PROBE_CONFIRM_RETRY, stepper.run_status = STPPER_RUNNING);
+
    // Home (O)nly if position is unknown
   if (!axes_should_home() && parser.seen_test('O')) {
     if (DEBUGGING(LEVELING)) DEBUG_ECHOLNPGM("> homing not needed, skip");
@@ -744,7 +751,7 @@ void GcodeSuite::G28() {
         anker_homing.is_angan_homing_z_num++;
         if(anker_homing.is_angan_homing_z_num>=ANKER_Z_AGAIN_HOMING_NUM)  
         {
-          MYSERIAL2.printf("Error:Homing Error Z_AXIS\r\n");
+          MYSERIAL2.printf("Error:Homing Error Z_AXIS\r\necho:Homing try 3 times\r\n");
           kill(GET_TEXT(MSG_KILL_HOMING_FAILED));
         }
         gcode.process_subcommands_now_P(PSTR("G28 Z\n"));
@@ -790,6 +797,8 @@ void GcodeSuite::G28() {
 void GcodeSuite::G2001() {
 
   planner.synchronize();          // Wait for planner moves to finish!
+
+  MYSERIAL2.printLine("echo: G2001 running=%d\r\n", IS_new_nozzle_board()); // LOG
 
   SET_SOFT_ENDSTOP_LOOSE(false);  // Reset a leftover 'loose' motion state
 

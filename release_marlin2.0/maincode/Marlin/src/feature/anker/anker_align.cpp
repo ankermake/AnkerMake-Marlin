@@ -16,6 +16,12 @@
   #if ENABLED(ADAPT_DETACHED_NOZZLE)
    #include "../interactive/uart_nozzle_rx.h"
   #endif 
+  #if ADAPT_DETACHED_NOZZLE
+  #include "../interactive/uart_nozzle_tx.h"
+  #endif
+  #if ENABLED(EVT_HOMING_5X)
+  #include "../../feature/anker/anker_homing.h"
+  #endif
 
   Anker_Align anker_align;
     
@@ -95,6 +101,9 @@
      for(num=0;num<ANLIGN_NUM;num++)
      {
          do_blocking_move_to_z(current_position.z+ANLIGN_RISE);
+
+         TERN_(ADAPT_DETACHED_NOZZLE, if(IS_new_nozzle_board())uart_nozzle_tx_point_type(POINT_G36, num));
+
          const float z1 = probe.probe_at_point(anker_align.xy[0], raise_after, 0, true, false);
          if(isnan(z1))
          {
@@ -161,8 +170,14 @@
            }
          }
 
+         if(anker_align.is_g36_cmd_executing == false)
+         {
+            SERIAL_ECHO("echo:anker_align stop!\r\n");
+            break;
+         }
      }
         gcode.process_subcommands_now_P(PSTR("G2001\n"));
+        TERN_(USE_Z_SENSORLESS, anker_homing.is_again_probe_homing = false);
     }
 
 

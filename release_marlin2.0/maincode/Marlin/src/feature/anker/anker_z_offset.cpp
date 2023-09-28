@@ -12,25 +12,33 @@
 #include "../../gcode/gcode.h"
 #include "../../module/probe.h"
 #include "../interactive/uart_nozzle_rx.h"
+#include "anker_probe.h"
+#include "../interactive/protocol.h"
 
 Anker_Probe_set anker_probe_set;
 int16_t Anker_Probe_set::homing_value = HOMING_PROBE_VALUE;
 int16_t Anker_Probe_set::leveing_value = LEVEING_PROBE_VALUE;
 uint16_t Anker_Probe_set::delay = LEVEING_PROBE_DELAY;
 uint8_t Anker_Probe_set::run_step = 0;
-bool Anker_Probe_set::auto_run_flag = false;
 bool Anker_Probe_set::point_test_flag = false;
 xy_pos_t Anker_Probe_set::xy[5];
 
-void Anker_Probe_set::probe_start(uint16_t value)
+bool Anker_Probe_set::probe_start(uint16_t value)
 {
-#if ADAPT_DETACHED_NOZZLE
+  #if ADAPT_DETACHED_NOZZLE
     safe_delay(anker_probe_set.delay);
-    uart_nozzle_tx_probe_val(value);
     SERIAL_ECHO("probe_start\r\n");
-#else
+    #if ENABLED(ANKER_PROBE_CONFIRM_RETRY)
+    if(IS_new_nozzle_board()) 
+    {// Only works on the new nozzle board
+        if(anker_probe.probe_start_confirm(value)) return true; // error
+    }else
+    #endif
+        {uart_nozzle_tx_probe_val(value);}
+  #else
     MYSERIAL1.printf("M2012 S%d\n", value);
-#endif
+  #endif
+    return false; // OK
 }
 
 void Anker_Probe_set::reset_value()
@@ -95,12 +103,6 @@ void Anker_Probe_set::home_delay()
     safe_delay(PROBE_READ_NUM_DELAY);
 }
 
-void Anker_Probe_set::auto_run()
-{
-    gcode.process_subcommands_now_P(PSTR("M104 S230\nM109 S230\n"));
-    anker_probe_set.auto_run_flag = true;
-    gcode.process_subcommands_now_P(PSTR("G28\n"));
-}
 
 void Anker_Probe_set::auto_run_send_start_info()
 {

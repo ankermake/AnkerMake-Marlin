@@ -1201,6 +1201,12 @@ private:
         static void M3001_add_on();
         static void M3002_add_on();
         static void M3003_add_on();
+        static void M3030();
+        static void M3031();
+        static void M3032();
+        xy_pos_t M3032_Get_move_away(uint8_t position);
+        static void M3033();
+        static void M3034();
       #endif
       #if ENABLED(ADAPT_DETACHED_NOZZLE)   
         static void M3011();

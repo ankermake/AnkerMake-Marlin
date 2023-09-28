@@ -21,7 +21,7 @@
 #define GCP_CMD_31_HEATER_OCI_RECOVERY 0x31
 #define GCP_CMD_33_LEVELING_VAL_WRITE  0x33
 #define GCP_CMD_34_LEVELING_VAL_READ   0x34
-#define GCP_CMD_36_NOZZLE_POWER_ON    0x36
+#define GCP_CMD_36_NOZZLE_POWER_ON     0x36
 
 #define GCP_CMD_40_GET_PROBE_VALUE    0x40
 #define GCP_CMD_41_SHOW_ADC_VALUE_ON  0x41
@@ -30,6 +30,13 @@
 #define GCP_CMD_43_AUTO_OFFSET_START  0x44
 #define GCP_CMD_45_M3001_DEAL         0x45
 #define GCP_CMD_46_M3002_DEAL         0x46
+#define GCP_CMD_47_DEBUG_LOG          0x47
+#define GCP_CMD_48_POINT_TYPE         0x48 // Notify the nozzle board of the position under different commands.
+#define GCP_CMD_49_PRODUCTION_MODE    0x49 // Switch between production test mode and normal mode.
+#define GCP_CMD_4A_OVERPRESSURE       0x4A // Detecting and checking parameters related to overpressure 
+#define GCP_CMD_4B_CLOGGED_NOZZLE     0x4B // Clogged nozzle config // RX: (count, trigger_adc) TX: M3034 [S<Clogged nozzle switch>] [T<Clogged nozzle threshold>] 
+#define GCP_CMD_4C_ACTION_LOG         0x4C 
+#define GCP_CMD_4D_PROBE_ACK          0x4D // 
 
 #define GCP_CMD_F0_LED_IO_CTRL        0xF0
 #define GCP_CMD_F1_TEMP_IO_CTRL       0xF1
